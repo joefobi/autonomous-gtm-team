@@ -10,6 +10,9 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = []
 
+[project.scripts]
+memory-client = "hospital_gtm.cli:main"
+
 [project.optional-dependencies]
 dev = [
     "black>=24.10,<26",
