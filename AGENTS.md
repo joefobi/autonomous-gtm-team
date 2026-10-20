@@ -5,6 +5,9 @@ Build and operate a hackathon prototype that researches a hospital as a potentia
 
 Read DESIGN.md before implementation. This file defines the target behavior. Tools and services described here must be implemented and verified before claiming they work.
 
+## Python style
+Use short Google-style docstrings for every Python function and method. Include only `Args` and `Returns` sections when applicable.
+
 ## Product hypothesis
 We are exploring whether predictions of ED demand, staffed bed availability, and discharge timing can help hospital teams plan patient flow. Treat this as a hypothesis to validate. Public evidence of crowding does not establish the cause, buying intent, available data, or product effectiveness.
 
