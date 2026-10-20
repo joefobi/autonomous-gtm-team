@@ -424,7 +424,7 @@ class HospitalGTMWorkflow:
                 "coordination before evaluating ED arrival forecasting."
             )
             rationale = (
-                "Discovery feedback changed the priority toward inpatient "
+                f"{_feedback_label(feedback)} changed the priority toward inpatient "
                 "readiness; public evidence still does not establish buyer intent, "
                 "available data, or pilot value."
             )
@@ -434,7 +434,7 @@ class HospitalGTMWorkflow:
                 "coordination before evaluating inpatient bed readiness."
             )
             rationale = (
-                "Simulated discovery feedback changed the priority toward ED arrival "
+                f"{_feedback_label(feedback)} changed the priority toward ED arrival "
                 "demand; public evidence still does not establish buyer intent, "
                 "available data, or pilot value."
             )
@@ -629,8 +629,7 @@ class HospitalGTMWorkflow:
         if prior.recommendation == revised.recommendation:
             change_explanation = (
                 "Fresh-session recall retrieved feedback, but the recommendation did "
-                "not change because the current direction already reflects that "
-                "feedback."
+                "not change."
             )
         else:
             change_explanation = (
@@ -849,20 +848,32 @@ def _feedback_direction(records: Sequence[MemoryRecord]) -> str | None:
     directions: set[str] = set()
     for record in records:
         text = " ".join(record.content.lower().split())
-        if _contains_any(
+        ed_negative = _contains_any(
+            text,
+            (
+                "do not prioritize ed arrival",
+                "don't prioritize ed arrival",
+                "not prioritize ed arrival",
+            ),
+        )
+        inpatient_negative = _contains_any(
             text,
             (
                 "do not prioritize inpatient bed readiness",
                 "don't prioritize inpatient bed readiness",
                 "not prioritize inpatient bed readiness",
+            ),
+        )
+        ed_positive = _contains_any(
+            text,
+            (
                 "focus on ed arrival",
                 "focus on ed arrivals",
                 "prioritize ed arrival",
                 "prioritize ed arrivals",
             ),
-        ):
-            directions.add("ed")
-        elif _contains_any(
+        )
+        inpatient_positive = _contains_any(
             text,
             (
                 "focus on inpatient bed readiness",
@@ -870,11 +881,35 @@ def _feedback_direction(records: Sequence[MemoryRecord]) -> str | None:
                 "inpatient bed readiness before ed arrival",
                 "inpatient bed readiness and discharge coordination before ed",
             ),
-        ):
+        )
+        if inpatient_negative and ed_positive:
+            directions.add("ed")
+        elif ed_negative and inpatient_positive:
+            directions.add("inpatient")
+        elif ed_positive and not ed_negative and not inpatient_negative:
+            directions.add("ed")
+        elif inpatient_positive and not inpatient_negative and not ed_negative:
             directions.add("inpatient")
     if len(directions) == 1:
         return next(iter(directions))
     return None
+
+
+def _feedback_label(records: Sequence[MemoryRecord]) -> str:
+    """Describe the evidence status of recalled feedback.
+
+    Args:
+        records: Feedback records recalled for one hospital.
+
+    Returns:
+        Human-readable feedback evidence label.
+    """
+    statuses = {record.evidence_status for record in records}
+    if EvidenceStatus.SIMULATED in statuses:
+        return "Simulated discovery feedback"
+    if EvidenceStatus.FOUNDER_CONFIRMED in statuses:
+        return "Founder-confirmed discovery feedback"
+    return "Discovery feedback"
 
 
 def _contains_any(text: str, phrases: Sequence[str]) -> bool:

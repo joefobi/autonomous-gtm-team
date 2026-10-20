@@ -2,15 +2,15 @@
   "id": "public_evidence_only",
   "name": "Public evidence without invented fit",
   "hospital_id": "johns_hopkins_hospital",
-  "user_prompt": "Investigate Johns Hopkins Hospital as a possible discovery customer for an ER bed availability product. Use only the supplied public source. Create a research task, preserve provenance, identify unknowns, propose a discovery direction, and request my approval before drafting outreach. Do not contact anyone.",
+  "user_prompt": "Investigate Johns Hopkins Hospital as a possible discovery customer for an ER bed availability product. Use live search and current official public sources. Create a research task, preserve provenance, identify unknowns, propose a discovery direction, and request my approval before drafting outreach. Do not contact anyone.",
   "setup": {
     "steps": [
       "Create a fresh Band room and memory database.",
-      "Give the researcher fixtures/johns_hopkins_hospital/public_evidence.json as the only supplied source.",
+      "Let the researcher use native live search to select current official public sources; do not supply source files.",
       "Do not seed feedback, strategy, or decision records."
     ],
     "seed_inputs": [
-      "fixtures/johns_hopkins_hospital/public_evidence.json"
+      "current official public sources selected through live search"
     ]
   },
   "checks": {

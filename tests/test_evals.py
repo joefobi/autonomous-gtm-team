@@ -297,6 +297,82 @@ class EvaluationTests(unittest.TestCase):
             ).passed
         )
 
+    def test_latest_rejected_decision_overrides_earlier_approval(self) -> None:
+        """Require the latest founder decision, not any historical approval."""
+        scenario = EvalScenario.from_mapping(
+            {
+                "id": "latest-approval",
+                "name": "latest-approval",
+                "user_prompt": "latest-approval",
+                "hospital_id": "hospital-a",
+                "checks": {
+                    "require_plan": False,
+                    "require_research_task": False,
+                    "require_handoff": False,
+                    "require_ready_records": False,
+                    "require_provenance": False,
+                    "require_unknowns": False,
+                    "require_founder_decision": False,
+                    "require_approved_outreach": True,
+                    "allow_withheld_outreach": False,
+                    "require_strategy_revision": False,
+                    "require_simulated_feedback": False,
+                    "require_conflict_preserved": False,
+                    "require_stale_approval_block": False,
+                    "forbid_external_send": False,
+                    "fresh_prompt_must_omit": [],
+                },
+                "human_review_questions": [],
+            }
+        )
+        decisions = tuple(
+            MemoryRecord(
+                record_id=record_id,
+                hospital_id="hospital-a",
+                kind=RecordKind.FOUNDER_DECISION,
+                content=json.dumps({"explicit_answer": answer}),
+                evidence_status=EvidenceStatus.FOUNDER_CONFIRMED,
+                author_agent="founder",
+                idempotency_key=record_id,
+                strategy_version="strategy_v1",
+                created_at=created_at,
+                indexing_state=IndexingState.READY,
+            )
+            for record_id, answer, created_at in (
+                ("decision-1", "approved", "2026-10-20T10:00:00Z"),
+                ("decision-2", "revise", "2026-10-20T11:00:00Z"),
+            )
+        )
+        run = AgentRun(
+            scenario_id="latest-approval",
+            prompt="latest-approval",
+            plan_present=False,
+            tasks=(),
+            messages=(),
+            records=decisions,
+            outputs={
+                "outreach": {
+                    "hospital_id": "hospital-a",
+                    "strategy_version": "strategy_v1",
+                    "status": "draft",
+                    "external_send": False,
+                }
+            },
+            fresh_session_prompt="",
+            external_sends=(),
+        )
+
+        report = evaluate_run(scenario, run)
+
+        self.assertFalse(report.passed)
+        self.assertFalse(
+            next(
+                check
+                for check in report.checks
+                if check.name == "approval_gated_outreach"
+            ).passed
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

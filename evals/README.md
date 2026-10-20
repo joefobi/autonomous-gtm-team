@@ -37,15 +37,16 @@ Setup runs seed shared memory before the measured prompt. They are not part of
 the measured room transcript and must retain the same hospital ID as the
 scenario.
 
-- `public_evidence_only`: seed no memory records; give the researcher
-  `fixtures/johns_hopkins_hospital/public_evidence.json` as the supplied source.
-- `feedback_revision`: seed the public-evidence fixture, create and store an
-  initial `strategy_v1`, then store
-  `fixtures/johns_hopkins_hospital/discovery_feedback.json` as simulated
-  feedback. Start the measured session in a fresh agent session.
-- `conflicting_evidence`: seed both supplied source records described in the
-  scenario fixture before the measured session. Keep each record separate,
-  ready, and provenance-preserving; do not resolve the conflict during setup.
+- `public_evidence_only`: seed no memory records; let the researcher use native
+  live search to select current official public sources.
+- `feedback_revision`: use native live search to select a current official
+  source, create and store an initial `strategy_v1`, then store a
+  founder-provided discovery note as simulated feedback. Start the measured
+  session in a fresh agent session.
+- `conflicting_evidence`: use native live search to select two current official
+  sources with conflicting claims before the measured session. Keep each record
+  separate, ready, and provenance-preserving; do not resolve the conflict during
+  setup.
 - `stale_approval`: seed a ready `strategy_v1`, a founder-confirmed approval
   for `strategy_v1`, and a ready current `strategy_v2`. Do not seed an outreach
   draft, and keep the approval version mismatch visible to the measured agent.
