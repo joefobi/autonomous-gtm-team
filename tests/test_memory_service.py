@@ -28,6 +28,16 @@ def make_record(
     hospital_id: str = "demo",
     content: str = "The hospital is evaluating patient flow priorities.",
 ) -> MemoryRecord:
+    """Build a sourced memory record for tests.
+
+    Args:
+        record_id: Identifier for the record.
+        hospital_id: Hospital namespace for the record.
+        content: Text stored in the record.
+
+    Returns:
+        A valid test memory record.
+    """
     return MemoryRecord(
         record_id=record_id,
         hospital_id=hospital_id,
@@ -43,6 +53,7 @@ def make_record(
 
 class MemoryServiceTests(unittest.TestCase):
     def test_persists_across_store_instances_and_recalls(self) -> None:
+        """Persist and recall records across store instances."""
         with tempfile.TemporaryDirectory() as directory:
             database_path = Path(directory) / "memory.sqlite3"
             service = MemoryService(SQLiteRecordStore(database_path))
@@ -62,6 +73,7 @@ class MemoryServiceTests(unittest.TestCase):
             )
 
     def test_recall_isolated_by_hospital(self) -> None:
+        """Keep recall results isolated by hospital."""
         service = MemoryService(SQLiteRecordStore(":memory:"))
         service.remember(make_record("demo_001", hospital_id="demo"))
         service.remember(make_record("other_001", hospital_id="other"))
@@ -73,6 +85,7 @@ class MemoryServiceTests(unittest.TestCase):
         )
 
     def test_idempotency_returns_existing_record_and_rejects_conflicts(self) -> None:
+        """Return existing records and reject conflicting retries."""
         service = MemoryService(SQLiteRecordStore(":memory:"))
         record = make_record("record_001")
 
@@ -87,6 +100,7 @@ class MemoryServiceTests(unittest.TestCase):
             service.remember(replace(record, record_id="record_002"))
 
     def test_rejects_missing_and_cross_hospital_references(self) -> None:
+        """Reject missing and cross-hospital record references."""
         store = SQLiteRecordStore(":memory:")
         service = MemoryService(store)
         with self.assertRaises(InvalidRecordReference):
@@ -101,6 +115,7 @@ class MemoryServiceTests(unittest.TestCase):
             )
 
     def test_records_explicit_decision(self) -> None:
+        """Persist explicit founder decisions."""
         service = MemoryService(SQLiteRecordStore(":memory:"))
         decision = DecisionRequest(
             hospital_id="demo",
@@ -125,6 +140,7 @@ class MemoryServiceTests(unittest.TestCase):
 
 class MemoryHTTPTests(unittest.TestCase):
     def test_http_api_round_trip(self) -> None:
+        """Exercise the HTTP API round trip."""
         service = MemoryService(SQLiteRecordStore(":memory:"))
         server = create_server(service, port=0)
         thread = threading.Thread(target=server.serve_forever, daemon=True)

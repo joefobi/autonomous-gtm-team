@@ -25,10 +25,24 @@ class MemoryClient:
     """Small dependency-free client for the local HTTP API."""
 
     def __init__(self, base_url: str, timeout: float = 30.0) -> None:
+        """Initialize the HTTP client.
+
+        Args:
+            base_url: Memory service URL.
+            timeout: Request timeout in seconds.
+        """
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
 
     def remember(self, record: MemoryRecord) -> RememberResult:
+        """Store a memory record.
+
+        Args:
+            record: Record to store.
+
+        Returns:
+            The indexing result.
+        """
         payload = self._request("POST", "/memories", {"record": record.to_mapping()})
         return RememberResult(
             record_id=_required_string(payload, "record_id"),
@@ -38,10 +52,28 @@ class MemoryClient:
         )
 
     def get_record(self, record_id: str) -> MemoryRecord:
+        """Fetch a canonical record.
+
+        Args:
+            record_id: Stable record identifier.
+
+        Returns:
+            The canonical record.
+        """
         payload = self._request("GET", f"/memories/{record_id}")
         return MemoryRecord.from_mapping(payload)
 
     def recall(self, hospital_id: str, query: str, limit: int = 20) -> RecallResult:
+        """Recall records for a hospital.
+
+        Args:
+            hospital_id: Hospital scope for the search.
+            query: Search question or terms.
+            limit: Maximum number of matches.
+
+        Returns:
+            Matching canonical records.
+        """
         payload = self._request(
             "POST",
             "/recall",
@@ -77,9 +109,22 @@ class MemoryClient:
         )
 
     def health(self) -> dict[str, object]:
+        """Fetch service health.
+
+        Returns:
+            Service health details.
+        """
         return self._request("GET", "/health")
 
     def record_decision(self, decision: DecisionRequest) -> dict[str, object]:
+        """Record a founder decision.
+
+        Args:
+            decision: Decision to persist.
+
+        Returns:
+            The service response.
+        """
         return self._request("POST", "/decisions", decision.to_mapping())
 
     def _request(
@@ -88,6 +133,16 @@ class MemoryClient:
         path: str,
         payload: Mapping[str, object] | None = None,
     ) -> dict[str, object]:
+        """Send an HTTP request to the memory service.
+
+        Args:
+            method: HTTP method.
+            path: Service-relative path.
+            payload: Optional JSON request body.
+
+        Returns:
+            The decoded JSON response.
+        """
         body = None
         headers: dict[str, str] = {}
         if payload is not None:
@@ -121,6 +176,15 @@ class MemoryClient:
 
 
 def _required_string(payload: Mapping[str, object], field_name: str) -> str:
+    """Read a required string response field.
+
+    Args:
+        payload: Decoded response payload.
+        field_name: Field to read.
+
+    Returns:
+        The field value.
+    """
     value = payload.get(field_name)
     if not isinstance(value, str):
         raise MemoryClientError(f"response field {field_name} must be a string")
@@ -128,6 +192,15 @@ def _required_string(payload: Mapping[str, object], field_name: str) -> str:
 
 
 def _optional_string(payload: Mapping[str, object], field_name: str) -> str | None:
+    """Read an optional string response field.
+
+    Args:
+        payload: Decoded response payload.
+        field_name: Field to read.
+
+    Returns:
+        The field value or `None`.
+    """
     value = payload.get(field_name)
     if value is not None and not isinstance(value, str):
         raise MemoryClientError(f"response field {field_name} must be a string or null")
@@ -135,6 +208,15 @@ def _optional_string(payload: Mapping[str, object], field_name: str) -> str | No
 
 
 def _required_bool(payload: Mapping[str, object], field_name: str) -> bool:
+    """Read a required boolean response field.
+
+    Args:
+        payload: Decoded response payload.
+        field_name: Field to read.
+
+    Returns:
+        The field value.
+    """
     value = payload.get(field_name)
     if not isinstance(value, bool):
         raise MemoryClientError(f"response field {field_name} must be a boolean")

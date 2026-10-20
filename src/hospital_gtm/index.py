@@ -21,22 +21,55 @@ class MemoryIndex(Protocol):
     """Interface implemented by keyword and semantic indexes."""
 
     def index(self, record: MemoryRecord) -> None:
-        """Add a record to the index."""
+        """Add a record to the index.
+
+        Args:
+            record: Record to index.
+        """
 
     def recall(self, hospital_id: str, query: str, limit: int) -> tuple[IndexHit, ...]:
-        """Return candidate canonical record IDs."""
+        """Return candidate canonical record IDs.
+
+        Args:
+            hospital_id: Hospital scope for the search.
+            query: Search question or terms.
+            limit: Maximum number of candidates.
+
+        Returns:
+            Candidate index hits.
+        """
 
 
 class KeywordIndex:
     """Deterministic SQLite-backed fallback used without external services."""
 
     def __init__(self, store: SQLiteRecordStore) -> None:
+        """Initialize the keyword index.
+
+        Args:
+            store: Canonical SQLite store.
+        """
         self._store = store
 
     def index(self, record: MemoryRecord) -> None:
+        """Accept a record for the SQLite-backed index.
+
+        Args:
+            record: Record already stored in SQLite.
+        """
         del record
 
     def recall(self, hospital_id: str, query: str, limit: int) -> tuple[IndexHit, ...]:
+        """Search the local keyword index.
+
+        Args:
+            hospital_id: Hospital scope for the search.
+            query: Search question or terms.
+            limit: Maximum number of matches.
+
+        Returns:
+            Matching index hits.
+        """
         return self._store.keyword_search(hospital_id, query, limit)
 
 
@@ -48,12 +81,23 @@ class CogneeIndex:
     """
 
     def __init__(self, dataset_name: str, cognee_module: object | None = None) -> None:
+        """Initialize the Cognee adapter.
+
+        Args:
+            dataset_name: Cognee dataset name.
+            cognee_module: Optional injected Cognee module.
+        """
         if not dataset_name.strip():
             raise ValueError("dataset_name must be non-empty")
         self.dataset_name = dataset_name
         self._cognee_module = cognee_module
 
     def _module(self) -> object:
+        """Load the configured Cognee module.
+
+        Returns:
+            The Cognee module.
+        """
         if self._cognee_module is None:
             try:
                 self._cognee_module = importlib.import_module("cognee")
@@ -64,6 +108,11 @@ class CogneeIndex:
         return self._cognee_module
 
     def index(self, record: MemoryRecord) -> None:
+        """Index a record in Cognee.
+
+        Args:
+            record: Record to index.
+        """
         remember = getattr(self._module(), "remember", None)
         if not callable(remember):
             raise IndexError("configured Cognee module has no remember function")
@@ -74,6 +123,16 @@ class CogneeIndex:
         )
 
     def recall(self, hospital_id: str, query: str, limit: int) -> tuple[IndexHit, ...]:
+        """Recall candidate records from Cognee.
+
+        Args:
+            hospital_id: Hospital scope for the search.
+            query: Search question or terms.
+            limit: Maximum number of matches.
+
+        Returns:
+            Candidate index hits.
+        """
         recall = getattr(self._module(), "recall", None)
         if not callable(recall):
             raise IndexError("configured Cognee module has no recall function")
@@ -91,6 +150,14 @@ class CogneeIndex:
 
     @staticmethod
     def _resolve(value: object) -> object:
+        """Resolve a synchronous or asynchronous Cognee result.
+
+        Args:
+            value: Cognee return value.
+
+        Returns:
+            The resolved value.
+        """
         if inspect.isawaitable(value):
             return asyncio.run(_await_value(cast(Awaitable[object], value)))
         return value
@@ -102,6 +169,13 @@ class CogneeIndex:
         hits: dict[str, IndexHit],
         evidence: str | None = None,
     ) -> None:
+        """Collect record IDs from a Cognee response.
+
+        Args:
+            value: Nested Cognee response value.
+            hits: Mutable hit collection.
+            evidence: Inherited evidence text.
+        """
         if isinstance(value, Mapping):
             record_id = value.get("record_id")
             if isinstance(record_id, str) and record_id.strip():
@@ -127,4 +201,12 @@ class CogneeIndex:
 
 
 async def _await_value(value: Awaitable[object]) -> object:
+    """Await a Cognee result.
+
+    Args:
+        value: Awaitable result.
+
+    Returns:
+        The awaited value.
+    """
     return await value

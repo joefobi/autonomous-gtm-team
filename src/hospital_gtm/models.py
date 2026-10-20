@@ -44,16 +44,35 @@ class IndexingState(StrEnum):
 
 
 def _now() -> str:
+    """Return the current UTC timestamp."""
     return datetime.now(timezone.utc).isoformat()
 
 
 def _required_text(value: object, field_name: str) -> str:
+    """Validate required text.
+
+    Args:
+        value: Candidate value.
+        field_name: Field name.
+
+    Returns:
+        Normalized text.
+    """
     if not isinstance(value, str) or not value.strip():
         raise ModelValidationError(f"{field_name} must be a non-empty string")
     return value.strip()
 
 
 def _optional_text(value: object, field_name: str) -> str | None:
+    """Validate optional text.
+
+    Args:
+        value: Candidate value.
+        field_name: Field name.
+
+    Returns:
+        Normalized text or `None`.
+    """
     if value is None:
         return None
     if not isinstance(value, str):
@@ -63,6 +82,16 @@ def _optional_text(value: object, field_name: str) -> str | None:
 
 
 def _enum_value(enum_type: type[EnumType], value: object, field_name: str) -> EnumType:
+    """Validate an enum member.
+
+    Args:
+        enum_type: Enum class.
+        value: Candidate value.
+        field_name: Field name.
+
+    Returns:
+        Validated enum member.
+    """
     text = _required_text(value, field_name)
     try:
         return enum_type(text)
@@ -72,6 +101,15 @@ def _enum_value(enum_type: type[EnumType], value: object, field_name: str) -> En
 
 
 def _string_tuple(value: object, field_name: str) -> tuple[str, ...]:
+    """Validate a collection of strings.
+
+    Args:
+        value: Candidate collection.
+        field_name: Field name.
+
+    Returns:
+        Normalized string tuple.
+    """
     if value is None:
         return ()
     if not isinstance(value, (list, tuple)):
@@ -105,6 +143,7 @@ class MemoryRecord:
     indexing_error: str | None = None
 
     def __post_init__(self) -> None:
+        """Validate and normalize record fields."""
         object.__setattr__(
             self, "record_id", _required_text(self.record_id, "record_id")
         )
@@ -162,7 +201,14 @@ class MemoryRecord:
 
     @classmethod
     def from_mapping(cls, payload: Mapping[str, object]) -> MemoryRecord:
-        """Build and validate a record from decoded JSON."""
+        """Build a record from decoded JSON.
+
+        Args:
+            payload: Decoded record fields.
+
+        Returns:
+            Validated memory record.
+        """
 
         return cls(
             record_id=payload.get("record_id"),  # type: ignore[arg-type]
@@ -197,7 +243,11 @@ class MemoryRecord:
         )
 
     def payload_mapping(self) -> dict[str, object]:
-        """Return fields that define record identity for idempotency checks."""
+        """Return idempotency identity fields.
+
+        Returns:
+            Record identity fields.
+        """
 
         payload = self.to_mapping()
         payload.pop("indexing_state", None)
@@ -206,7 +256,11 @@ class MemoryRecord:
         return payload
 
     def to_mapping(self) -> dict[str, object]:
-        """Return a JSON-compatible representation."""
+        """Return JSON-compatible record fields.
+
+        Returns:
+            Serialized record fields.
+        """
 
         return {
             "record_id": self.record_id,
@@ -229,7 +283,11 @@ class MemoryRecord:
         }
 
     def index_text(self) -> str:
-        """Return provenance-rich text for a semantic index."""
+        """Return provenance-rich index text.
+
+        Returns:
+            Text for semantic indexing.
+        """
 
         fields = [
             f"record_id: {self.record_id}",
@@ -259,6 +317,7 @@ class DecisionRequest:
     observed_at: str | None = None
 
     def __post_init__(self) -> None:
+        """Validate and normalize decision fields."""
         for field_name in (
             "hospital_id",
             "strategy_version",
@@ -284,6 +343,14 @@ class DecisionRequest:
 
     @classmethod
     def from_mapping(cls, payload: Mapping[str, object]) -> DecisionRequest:
+        """Build a decision from decoded JSON.
+
+        Args:
+            payload: Decoded decision fields.
+
+        Returns:
+            Validated decision request.
+        """
         return cls(
             hospital_id=payload.get("hospital_id"),  # type: ignore[arg-type]
             strategy_version=payload.get("strategy_version"),  # type: ignore[arg-type]
@@ -297,6 +364,11 @@ class DecisionRequest:
         )
 
     def content(self) -> str:
+        """Serialize decision content.
+
+        Returns:
+            Stable JSON decision content.
+        """
         return json.dumps(
             {
                 "options": list(self.options),
@@ -308,7 +380,11 @@ class DecisionRequest:
         )
 
     def to_mapping(self) -> dict[str, object]:
-        """Return a JSON-compatible representation."""
+        """Return JSON-compatible decision fields.
+
+        Returns:
+            Serialized decision fields.
+        """
 
         return {
             "hospital_id": self.hospital_id,
@@ -341,6 +417,11 @@ class RecallMatch:
     evidence: str | None = None
 
     def to_mapping(self) -> dict[str, object]:
+        """Return JSON-compatible match fields.
+
+        Returns:
+            Serialized recall match.
+        """
         return {
             "record": self.record.to_mapping(),
             "score": self.score,
@@ -358,6 +439,11 @@ class RememberResult:
     created: bool
 
     def to_mapping(self) -> dict[str, object]:
+        """Return JSON-compatible remember fields.
+
+        Returns:
+            Serialized remember result.
+        """
         return {
             "record_id": self.record_id,
             "indexing_state": self.indexing_state.value,
@@ -375,6 +461,11 @@ class RecallResult:
     matches: tuple[RecallMatch, ...]
 
     def to_mapping(self) -> dict[str, object]:
+        """Return JSON-compatible recall fields.
+
+        Returns:
+            Serialized recall result.
+        """
         return {
             "hospital_id": self.hospital_id,
             "query": self.query,

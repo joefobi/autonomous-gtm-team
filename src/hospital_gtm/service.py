@@ -42,6 +42,11 @@ class DecisionResult:
     error: str | None
 
     def to_mapping(self) -> dict[str, object]:
+        """Return JSON-compatible decision result fields.
+
+        Returns:
+            Serialized decision result.
+        """
         return {
             "decision_id": self.decision_id,
             "record_id": self.record_id,
@@ -59,10 +64,24 @@ class MemoryService:
         store: SQLiteRecordStore,
         index: MemoryIndex | None = None,
     ) -> None:
+        """Initialize the memory service.
+
+        Args:
+            store: Canonical SQLite store.
+            index: Optional memory index.
+        """
         self.store = store
         self.index = index or KeywordIndex(store)
 
     def remember(self, record: MemoryRecord) -> RememberResult:
+        """Persist and index a memory record.
+
+        Args:
+            record: Record to persist.
+
+        Returns:
+            The indexing result.
+        """
         stored, created = self.store.remember(record)
         if not created:
             return RememberResult(
@@ -97,9 +116,27 @@ class MemoryService:
         )
 
     def get_record(self, record_id: str) -> MemoryRecord:
+        """Retrieve a canonical record.
+
+        Args:
+            record_id: Stable record identifier.
+
+        Returns:
+            The canonical record.
+        """
         return self.store.get(record_id)
 
     def recall(self, hospital_id: str, query: str, limit: int = 20) -> RecallResult:
+        """Recall indexed records for a hospital.
+
+        Args:
+            hospital_id: Hospital scope for the search.
+            query: Search question or terms.
+            limit: Maximum number of matches.
+
+        Returns:
+            Matching canonical records.
+        """
         if not hospital_id.strip():
             raise ModelValidationError("hospital_id must be a non-empty string")
         if limit < 1 or limit > 100:
@@ -119,6 +156,14 @@ class MemoryService:
         return RecallResult(hospital_id.strip(), query, tuple(matches))
 
     def record_decision(self, decision: DecisionRequest) -> DecisionResult:
+        """Persist and index a founder decision.
+
+        Args:
+            decision: Decision to persist.
+
+        Returns:
+            The decision indexing result.
+        """
         record_id = (
             f"decision_{uuid.uuid5(uuid.NAMESPACE_URL, decision.idempotency_key).hex}"
         )
@@ -145,6 +190,11 @@ class MemoryService:
         )
 
     def health(self) -> dict[str, object]:
+        """Return service health details.
+
+        Returns:
+            Health status and storage details.
+        """
         return {
             "status": "ok",
             "database": self.store.database_path,
@@ -157,14 +207,29 @@ def create_server(
     host: str = "127.0.0.1",
     port: int = 8765,
 ) -> ThreadingHTTPServer:
-    """Create an HTTP server without starting its event loop."""
+    """Create an HTTP server without starting its event loop.
+
+    Args:
+        service: Memory service to expose.
+        host: Interface to bind.
+        port: Port to bind.
+
+    Returns:
+        Configured HTTP server.
+    """
 
     handler = _handler_for(service)
     return ThreadingHTTPServer((host, port), handler)
 
 
 def serve(service: MemoryService, host: str = "127.0.0.1", port: int = 8765) -> None:
-    """Run the memory service until interrupted."""
+    """Run the memory service until interrupted.
+
+    Args:
+        service: Memory service to expose.
+        host: Interface to bind.
+        port: Port to bind.
+    """
 
     server = create_server(service, host, port)
     try:
@@ -174,10 +239,20 @@ def serve(service: MemoryService, host: str = "127.0.0.1", port: int = 8765) -> 
 
 
 def _handler_for(service: MemoryService) -> type[BaseHTTPRequestHandler]:
+    """Build an HTTP handler bound to a memory service.
+
+    Args:
+        service: Memory service for request handling.
+
+    Returns:
+        A configured request handler class.
+    """
+
     class MemoryRequestHandler(BaseHTTPRequestHandler):
         server_version = "HospitalGTM/0.1"
 
         def do_GET(self) -> None:
+            """Handle health and record GET requests."""
             path = urlsplit(self.path).path
             try:
                 if path == "/health":
@@ -193,6 +268,7 @@ def _handler_for(service: MemoryService) -> type[BaseHTTPRequestHandler]:
                 self._send_error(exc)
 
         def do_POST(self) -> None:
+            """Handle memory, recall, and decision POST requests."""
             path = urlsplit(self.path).path
             try:
                 payload = self._read_json()
@@ -216,6 +292,11 @@ def _handler_for(service: MemoryService) -> type[BaseHTTPRequestHandler]:
                 self._send_error(exc)
 
         def _read_json(self) -> dict[str, object]:
+            """Read and validate a JSON request body.
+
+            Returns:
+                Decoded JSON object.
+            """
             content_length = self.headers.get("Content-Length")
             if content_length is None:
                 raise ModelValidationError("Content-Length header is required")
@@ -232,6 +313,12 @@ def _handler_for(service: MemoryService) -> type[BaseHTTPRequestHandler]:
             return cast(dict[str, object], decoded)
 
         def _send_json(self, status: int, payload: Mapping[str, object]) -> None:
+            """Send a JSON response.
+
+            Args:
+                status: HTTP status code.
+                payload: JSON response fields.
+            """
             body = json.dumps(payload, sort_keys=True).encode("utf-8")
             self.send_response(status)
             self.send_header("Content-Type", "application/json")
@@ -240,6 +327,11 @@ def _handler_for(service: MemoryService) -> type[BaseHTTPRequestHandler]:
             self.wfile.write(body)
 
         def _send_error(self, error: Exception) -> None:
+            """Send an error response.
+
+            Args:
+                error: Exception to serialize.
+            """
             if isinstance(error, (ModelValidationError, ValueError)):
                 status = 400
             elif isinstance(error, RecordNotFound):
@@ -255,12 +347,26 @@ def _handler_for(service: MemoryService) -> type[BaseHTTPRequestHandler]:
             self._send_json(status, {"error": str(error)})
 
         def log_message(self, format: str, *args: Any) -> None:
+            """Suppress default request logging.
+
+            Args:
+                format: Logging format string.
+                args: Logging arguments.
+            """
             del format, args
 
     return MemoryRequestHandler
 
 
 def _record_payload(payload: Mapping[str, object]) -> dict[str, object]:
+    """Extract a record payload from a request.
+
+    Args:
+        payload: Decoded request payload.
+
+    Returns:
+        Record fields with the idempotency key.
+    """
     raw_record = payload.get("record", payload)
     if not isinstance(raw_record, dict):
         raise ModelValidationError("record must be a JSON object")
@@ -272,6 +378,14 @@ def _record_payload(payload: Mapping[str, object]) -> dict[str, object]:
 
 
 def _recall_payload(payload: Mapping[str, object]) -> tuple[str, str, int]:
+    """Validate recall request fields.
+
+    Args:
+        payload: Decoded request payload.
+
+    Returns:
+        Hospital ID, query, and result limit.
+    """
     hospital_id = payload.get("hospital_id")
     query = payload.get("query", "")
     limit = payload.get("limit", 20)

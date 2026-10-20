@@ -43,6 +43,11 @@ class SQLiteRecordStore:
     """Persist canonical memory records and decision metadata in SQLite."""
 
     def __init__(self, database_path: str | Path) -> None:
+        """Initialize the SQLite record store.
+
+        Args:
+            database_path: SQLite path or `:memory:`.
+        """
         self.database_path = str(database_path)
         if self.database_path != ":memory:":
             Path(self.database_path).parent.mkdir(parents=True, exist_ok=True)
@@ -60,6 +65,11 @@ class SQLiteRecordStore:
 
     @contextmanager
     def _connection(self) -> Iterator[sqlite3.Connection]:
+        """Yield a configured SQLite connection.
+
+        Returns:
+            A SQLite connection context.
+        """
         if self._memory_connection is not None:
             yield self._memory_connection
             return
@@ -78,6 +88,7 @@ class SQLiteRecordStore:
             connection.close()
 
     def _initialize(self) -> None:
+        """Create the canonical store schema."""
         with self._connection() as connection:
             connection.executescript(
                 """
@@ -126,7 +137,14 @@ class SQLiteRecordStore:
             )
 
     def remember(self, record: MemoryRecord) -> tuple[MemoryRecord, bool]:
-        """Insert a record, or return the existing record for a retry."""
+        """Insert a record or return the existing retry record.
+
+        Args:
+            record: Record to persist.
+
+        Returns:
+            The stored record and whether it was newly created.
+        """
 
         with self._lock, self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -193,7 +211,14 @@ class SQLiteRecordStore:
             return record, True
 
     def get(self, record_id: str) -> MemoryRecord:
-        """Return a canonical record by stable ID."""
+        """Return a canonical record by stable ID.
+
+        Args:
+            record_id: Stable record identifier.
+
+        Returns:
+            The canonical record.
+        """
 
         with self._connection() as connection:
             row = connection.execute(
@@ -209,7 +234,16 @@ class SQLiteRecordStore:
         state: IndexingState,
         error: str | None = None,
     ) -> MemoryRecord:
-        """Update indexing state after an index attempt."""
+        """Update indexing state after an index attempt.
+
+        Args:
+            record_id: Stable record identifier.
+            state: New indexing state.
+            error: Optional indexing error.
+
+        Returns:
+            The updated record.
+        """
 
         with self._lock, self._connection() as connection:
             connection.execute(
@@ -228,7 +262,16 @@ class SQLiteRecordStore:
         query: str,
         limit: int,
     ) -> tuple[IndexHit, ...]:
-        """Search ready records using a deterministic local fallback index."""
+        """Search ready records with the local fallback index.
+
+        Args:
+            hospital_id: Hospital scope for the search.
+            query: Search terms.
+            limit: Maximum number of matches.
+
+        Returns:
+            Matching index hits.
+        """
 
         if limit < 1:
             raise ModelValidationError("limit must be at least 1")
@@ -275,7 +318,13 @@ class SQLiteRecordStore:
         decision: DecisionRequest,
         record_id: str,
     ) -> None:
-        """Store structured decision fields alongside its canonical record."""
+        """Store structured decision fields beside its record.
+
+        Args:
+            decision_id: Stable decision identifier.
+            decision: Decision fields to persist.
+            record_id: Linked canonical record identifier.
+        """
 
         with self._lock, self._connection() as connection:
             try:
@@ -308,6 +357,12 @@ class SQLiteRecordStore:
         connection: sqlite3.Connection,
         record: MemoryRecord,
     ) -> None:
+        """Validate record references and hospital ownership.
+
+        Args:
+            connection: Active SQLite connection.
+            record: Record whose references are checked.
+        """
         reference_ids = (*record.source_record_ids, record.supersedes_record_id)
         for reference_id in reference_ids:
             if reference_id is None:
@@ -325,6 +380,14 @@ class SQLiteRecordStore:
 
     @staticmethod
     def _row_to_record(row: sqlite3.Row) -> MemoryRecord:
+        """Convert a SQLite row into a memory record.
+
+        Args:
+            row: SQLite record row.
+
+        Returns:
+            The decoded memory record.
+        """
         source_record_ids = json.loads(cast(str, row["source_record_ids_json"]))
         if not isinstance(source_record_ids, list) or not all(
             isinstance(item, str) for item in source_record_ids

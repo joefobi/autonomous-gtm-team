@@ -17,12 +17,25 @@ from hospital_gtm.store import SQLiteRecordStore
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Run a memory CLI command.
+
+    Args:
+        argv: Optional command-line arguments.
+
+    Returns:
+        The command exit code.
+    """
     parser = _build_parser()
     args = parser.parse_args(argv)
     return int(args.handler(args))
 
 
 def _build_parser() -> argparse.ArgumentParser:
+    """Build the memory CLI parser.
+
+    Returns:
+        The configured argument parser.
+    """
     parser = argparse.ArgumentParser(prog="memory-client")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -66,6 +79,14 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _serve(args: argparse.Namespace) -> int:
+    """Run the memory service.
+
+    Args:
+        args: Parsed service options.
+
+    Returns:
+        The service exit code.
+    """
     store = SQLiteRecordStore(args.db)
     index: MemoryIndex = KeywordIndex(store)
     if args.index == "cognee":
@@ -75,6 +96,14 @@ def _serve(args: argparse.Namespace) -> int:
 
 
 def _remember(args: argparse.Namespace) -> int:
+    """Send a record to the memory service.
+
+    Args:
+        args: Parsed remember options.
+
+    Returns:
+        The command exit code.
+    """
     record = MemoryRecord.from_mapping(_load_object(args.record_file))
     result = MemoryClient(args.url).remember(record)
     print(json.dumps(result.to_mapping(), sort_keys=True))
@@ -82,18 +111,42 @@ def _remember(args: argparse.Namespace) -> int:
 
 
 def _get(args: argparse.Namespace) -> int:
+    """Fetch a canonical record.
+
+    Args:
+        args: Parsed get options.
+
+    Returns:
+        The command exit code.
+    """
     record = MemoryClient(args.url).get_record(args.record_id)
     print(json.dumps(record.to_mapping(), sort_keys=True))
     return 0
 
 
 def _recall(args: argparse.Namespace) -> int:
+    """Recall records for a hospital.
+
+    Args:
+        args: Parsed recall options.
+
+    Returns:
+        The command exit code.
+    """
     result = MemoryClient(args.url).recall(args.hospital_id, args.query, args.limit)
     print(json.dumps(result.to_mapping(), sort_keys=True))
     return 0
 
 
 def _decision(args: argparse.Namespace) -> int:
+    """Send a founder decision to the memory service.
+
+    Args:
+        args: Parsed decision options.
+
+    Returns:
+        The command exit code.
+    """
     decision = DecisionRequest.from_mapping(_load_object(args.decision_file))
     response = MemoryClient(args.url).record_decision(decision)
     print(json.dumps(response, sort_keys=True))
@@ -101,6 +154,14 @@ def _decision(args: argparse.Namespace) -> int:
 
 
 def _load_object(path: Path) -> dict[str, object]:
+    """Load a JSON object from disk.
+
+    Args:
+        path: JSON file path.
+
+    Returns:
+        The decoded JSON object.
+    """
     with path.open(encoding="utf-8") as file:
         value: Any = json.load(file)
     if not isinstance(value, dict):
