@@ -24,6 +24,7 @@
     "require_unknowns": true,
     "require_founder_decision": false,
     "require_approved_outreach": false,
+    "allow_withheld_outreach": false,
     "require_strategy_revision": true,
     "require_simulated_feedback": true,
     "require_conflict_preserved": false,

@@ -51,7 +51,8 @@
     "revised_strategy": {
       "recommendation": "Prioritize discovery about inpatient bed readiness and discharge coordination before evaluating ED arrival forecasting.",
       "unknowns": ["Actual bottleneck"],
-      "feedback_record_ids": ["feedback_simulated_001"]
+      "feedback_record_ids": ["feedback_simulated_001"],
+      "source_record_ids": ["research_public_001"]
     }
   },
   "fresh_session_prompt": "Prepare the next founder meeting for Johns Hopkins Hospital using the shared memory.",

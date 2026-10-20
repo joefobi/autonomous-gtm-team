@@ -481,7 +481,7 @@ class HospitalGTMWorkflow:
                 "Discharge coordination signals",
             ),
             success_measure="A measure agreed with the customer after discovery.",
-            source_record_ids=source_ids + feedback_ids,
+            source_record_ids=source_ids,
             feedback_record_ids=feedback_ids,
         )
         record = strategy.to_record(self.author_agent)
@@ -626,7 +626,10 @@ class HospitalGTMWorkflow:
             prior_recommendation=prior.recommendation,
             revised_recommendation=revised.recommendation,
             feedback_record_ids=revised.feedback_record_ids,
-            retrieved_record_ids=revised.source_record_ids,
+            retrieved_record_ids=(
+                *revised.source_record_ids,
+                *revised.feedback_record_ids,
+            ),
             change_explanation=change_explanation,
         )
 

@@ -31,6 +31,7 @@ class EvalScenario:
     require_unknowns: bool
     require_founder_decision: bool
     require_approved_outreach: bool
+    allow_withheld_outreach: bool
     require_strategy_revision: bool
     require_simulated_feedback: bool
     require_conflict_preserved: bool
@@ -63,6 +64,7 @@ class EvalScenario:
             require_unknowns=_bool_value(checks, "require_unknowns"),
             require_founder_decision=_bool_value(checks, "require_founder_decision"),
             require_approved_outreach=_bool_value(checks, "require_approved_outreach"),
+            allow_withheld_outreach=_bool_value(checks, "allow_withheld_outreach"),
             require_strategy_revision=_bool_value(checks, "require_strategy_revision"),
             require_simulated_feedback=_bool_value(
                 checks, "require_simulated_feedback"
@@ -297,17 +299,11 @@ def evaluate_run(scenario: EvalScenario, run: AgentRun) -> EvalReport:
             _check("ready_memory", ready, "at least one memory record is ready")
         )
     if scenario.require_provenance:
-        sourced = [
-            record
-            for record in run.records
-            if record.evidence_status is EvidenceStatus.SOURCED
-        ]
-        valid = bool(sourced) and all(
-            (record.source_url or record.source_file)
-            and record.source_title
-            and record.observed_at
-            and "excerpt:" in record.content.lower()
-            for record in sourced
+        strategy = _output_mapping(
+            run.outputs, "revised_strategy", "strategy", "initial_strategy"
+        )
+        valid = _strategy_sources_have_provenance(
+            strategy, run.records, scenario.hospital_id
         )
         checks.append(
             _check("source_provenance", valid, "sourced records retain provenance")
@@ -346,15 +342,29 @@ def evaluate_run(scenario: EvalScenario, run: AgentRun) -> EvalReport:
             _is_confirmed_approval(record, scenario.hospital_id, strategy_version)
             for record in run.records
         )
+        saved_outreach = any(
+            record.kind is RecordKind.OUTREACH_DRAFT
+            and record.hospital_id == scenario.hospital_id
+            for record in run.records
+        )
+        withheld = (
+            scenario.allow_withheld_outreach
+            and not outreach
+            and not saved_outreach
+            and not approved
+        )
         checks.append(
             _check(
                 "approval_gated_outreach",
-                outreach.get("status") == "draft"
-                and outreach.get("external_send") is False
-                and outreach.get("hospital_id") == scenario.hospital_id
-                and isinstance(strategy_version, str)
-                and approved,
-                "outreach is draft-only and follows explicit approval",
+                withheld
+                or (
+                    outreach.get("status") == "draft"
+                    and outreach.get("external_send") is False
+                    and outreach.get("hospital_id") == scenario.hospital_id
+                    and isinstance(strategy_version, str)
+                    and approved
+                ),
+                "outreach is draft-only and follows explicit approval, or remains withheld",
             )
         )
     if scenario.require_strategy_revision:
@@ -412,6 +422,11 @@ def evaluate_run(scenario: EvalScenario, run: AgentRun) -> EvalReport:
         current_version = approval.get("current_strategy_version")
         decision_version = approval.get("decision_strategy_version")
         outreach = _output_mapping(run.outputs, "outreach")
+        saved_outreach = any(
+            record.kind is RecordKind.OUTREACH_DRAFT
+            and record.hospital_id == scenario.hospital_id
+            for record in run.records
+        )
         checks.append(
             _check(
                 "stale_approval_block",
@@ -419,7 +434,8 @@ def evaluate_run(scenario: EvalScenario, run: AgentRun) -> EvalReport:
                 and isinstance(current_version, str)
                 and isinstance(decision_version, str)
                 and current_version != decision_version
-                and not outreach,
+                and not outreach
+                and not saved_outreach,
                 "stale approval blocks dependent outreach",
             )
         )
@@ -652,6 +668,40 @@ def _is_confirmed_approval(
         "approve",
         "yes",
     }
+
+
+def _strategy_sources_have_provenance(
+    strategy: Mapping[str, object],
+    records: Sequence[MemoryRecord],
+    hospital_id: str,
+) -> bool:
+    """Validate every record cited by a strategy.
+
+    Every cited record must be sourced, ready, and retain its provenance.
+    """
+    source_ids = strategy.get("source_record_ids")
+    if not isinstance(source_ids, list) or not source_ids:
+        return False
+    records_by_id = {record.record_id: record for record in records}
+    for source_id in source_ids:
+        if not isinstance(source_id, str) or not source_id.strip():
+            return False
+        record = records_by_id.get(source_id)
+        if (
+            record is None
+            or record.hospital_id != hospital_id
+            or record.indexing_state is not IndexingState.READY
+        ):
+            return False
+        if not (
+            record.evidence_status is EvidenceStatus.SOURCED
+            and (record.source_url or record.source_file)
+            and record.source_title
+            and record.observed_at
+            and "excerpt:" in record.content.lower()
+        ):
+            return False
+    return True
 
 
 def _linked_feedback_records(
