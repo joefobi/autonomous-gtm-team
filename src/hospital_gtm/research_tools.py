@@ -222,17 +222,23 @@ def stable_record_id(
         Stable lowercase record identifier.
     """
     identity = "|".join(
-        (hospital_id, source.source_url or "", source.source_file or "", source.text)
+        (
+            hospital_id,
+            source.source_url or "",
+            source.source_file or "",
+            source.accessed_at,
+            source.text,
+        )
     )
     digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:20]
     return f"{prefix}_{digest}"
 
 
 def _load_json_source(path: Path, raw_text: str) -> SourceDocument:
-    """Decode a JSON source fixture.
+    """Decode a JSON source document.
 
     Args:
-        path: JSON fixture path.
+        path: JSON source path.
         raw_text: File contents.
 
     Returns:

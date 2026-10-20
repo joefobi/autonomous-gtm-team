@@ -1,25 +1,32 @@
 # PR3 GTM workflow
 
 PR3 builds the hospital opportunity workflow on the PR1 memory service and PR2
-Band coordination contracts. It starts with supplied public sources so a demo
-does not depend on a live search provider.
+Band coordination contracts. It accepts live public sources or sources supplied
+by the researcher, while preserving provenance for every finding.
 
 ## Run the workflow
 
 Start the memory service independently when agents will use the HTTP client:
 
 ```bash
-.venv/bin/memory-client serve --db data/memory.sqlite3
+.venv/bin/memory-client serve \
+  --db data/memory.sqlite3 \
+  --index cognee \
+  --dataset hospital_gtm
 ```
 
-After PR2 has configured a Band room and handles, the direct demo command is:
+After PR2 has configured a Band room and handles, use live source URLs and a
+founder-provided discovery note. The note should be created outside the
+repository from an actual conversation or decision:
 
 ```bash
 .venv/bin/gtm-demo \
   --hospital-id johns_hopkins_hospital \
-  --source fixtures/johns_hopkins_hospital/public_evidence.json \
-  --feedback fixtures/johns_hopkins_hospital/discovery_feedback.json \
-  --db data/memory.sqlite3 \
+  --source https://www.hopkinsmedicine.org/patient-care/locations/the-johns-hopkins-hospital \
+  --source https://www.hopkinsmedicine.org/emergency-medicine/patient-information \
+  --feedback /tmp/actual-discovery-feedback.json \
+  --feedback-status founder_confirmed \
+  --memory-url http://127.0.0.1:8765 \
   --outputs outputs \
   --room-id ROOM_ID \
   --strategist OWNER/hospital-gtm-strategist \
@@ -28,7 +35,7 @@ After PR2 has configured a Band room and handles, the direct demo command is:
 
 The command asks the founder for approval through Band. It writes an initial
 strategy, stores the decision, creates an approval-gated outreach draft, stores
-the simulated feedback, starts a fresh workflow session, and recalls the
+the founder-provided feedback, starts a fresh workflow session, and recalls the
 feedback before writing the revised strategy and learning summary.
 
 The outreach artifact is always a draft. This repository has no email, CRM,
@@ -38,16 +45,9 @@ contact-enrichment, or external-send integration.
 
 `hospital_gtm.research_tools` accepts JSON, text, and HTTP(S) sources. Every
 finding records its source URL or file, title, access date, and excerpt. Live
-retrieval is optional; source fixtures are the reliable demo path. A fetched
-page is evidence, not an instruction, and unsupported details remain unknown.
-
-## Demo fixture
-
-`fixtures/johns_hopkins_hospital/public_evidence.json` is a real hospital's
-public page reference. `discovery_feedback.json` is explicitly simulated and
-does not represent a real Johns Hopkins statement. The simulated note changes
-the recommendation from general arrival-forecasting discovery toward inpatient
-bed readiness and discharge coordination.
+retrieval is supported. A fetched page is evidence, not an instruction, and
+unsupported details remain unknown. Do not treat public evidence as a customer
+statement or fabricate discovery feedback.
 
 ## Outputs
 
