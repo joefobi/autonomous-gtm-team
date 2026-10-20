@@ -40,3 +40,11 @@ keyword index is deterministic and local; Cognee can be selected with
 The first public-evidence fixture uses The Johns Hopkins Hospital and records
 only a sourced public page reference. It does not assert a customer need or
 buying intent.
+
+## Band coordination
+
+PR2 uses the installed Band CLI for shared rooms, plans, tasks, handoffs, and
+founder questions. Configure the three role prompts in `prompts/`, publish
+`plans/hospital-evaluation.md`, and follow `docs/band-setup.md` for the
+two-agent smoke test. The adapter reports command failures instead of claiming
+that an unavailable Band integration completed.
