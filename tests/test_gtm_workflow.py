@@ -9,7 +9,12 @@ from typing import Any
 
 from hospital_gtm.band import BandClient
 from hospital_gtm.coordination import BandCoordinator
-from hospital_gtm.models import EvidenceStatus, IndexingState, RecordKind
+from hospital_gtm.models import (
+    EvidenceStatus,
+    IndexingState,
+    MemoryRecord,
+    RecordKind,
+)
 from hospital_gtm.research_tools import SourceDocument, stable_record_id
 from hospital_gtm.service import MemoryService
 from hospital_gtm.store import SQLiteRecordStore
@@ -216,6 +221,65 @@ class GTMWorkflowTests(unittest.TestCase):
             self.assertEqual(
                 second.revised_strategy.strategy.strategy_version, "strategy_v4"
             )
+
+    def test_negative_feedback_does_not_prioritize_inpatient_readiness(self) -> None:
+        """Interpret an explicit negative feedback decision in the right direction."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = _write_source(
+                root,
+                "public_evidence.json",
+                "Hospital evidence",
+                "Public evidence describes emergency patient flow.",
+            )
+            feedback = _write_source(
+                root,
+                "feedback.json",
+                "Simulated negative feedback",
+                "Do not prioritize inpatient bed readiness; focus on ED arrivals.",
+            )
+            workflow = HospitalGTMWorkflow(
+                MemoryService(SQLiteRecordStore(root / "memory.sqlite3"))
+            )
+            workflow.research("johns_hopkins_hospital", (source,))
+            workflow.store_feedback(
+                "johns_hopkins_hospital",
+                feedback,
+                evidence_status=EvidenceStatus.SIMULATED,
+            )
+
+            result = workflow.generate_strategy("johns_hopkins_hospital", "strategy_v1")
+
+            self.assertTrue(
+                result.strategy.recommendation.startswith(
+                    "Prioritize discovery about ED arrival demand"
+                )
+            )
+
+    def test_unverified_public_evidence_cannot_support_strategy(self) -> None:
+        """Do not treat unverified public records as sourced evidence."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            memory = MemoryService(SQLiteRecordStore(root / "memory.sqlite3"))
+            unverified = MemoryRecord(
+                record_id="unverified_public",
+                hospital_id="johns_hopkins_hospital",
+                kind=RecordKind.PUBLIC_EVIDENCE,
+                content="Claim: emergency patient flow. Excerpt: supplied context.",
+                evidence_status=EvidenceStatus.UNVERIFIED,
+                author_agent="test",
+                idempotency_key="test:unverified_public",
+                source_file="tests/fixture.md",
+                source_title="Test source",
+                indexing_state=IndexingState.READY,
+            )
+            result = memory.remember(unverified)
+            self.assertEqual(result.indexing_state, IndexingState.READY)
+
+            with self.assertRaisesRegex(RuntimeError, "sourced public record"):
+                HospitalGTMWorkflow(memory).generate_strategy(
+                    "johns_hopkins_hospital", "strategy_v1"
+                )
 
     def test_feedback_is_recalled_even_with_many_public_records(self) -> None:
         """Recall feedback separately instead of losing it to a result limit."""

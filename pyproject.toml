@@ -15,6 +15,7 @@ dependencies = [
 [project.scripts]
 memory-client = "hospital_gtm.cli:main"
 gtm-demo = "hospital_gtm.workflow:main"
+agent-eval = "hospital_gtm.evals:main"
 
 [project.optional-dependencies]
 dev = [

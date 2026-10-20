@@ -405,33 +405,54 @@ class HospitalGTMWorkflow:
             records_by_id[record.record_id] = record
         records = tuple(records_by_id.values())
         sourced = tuple(
-            record for record in records if record.kind is RecordKind.PUBLIC_EVIDENCE
+            record
+            for record in records
+            if record.kind is RecordKind.PUBLIC_EVIDENCE
+            and record.evidence_status is EvidenceStatus.SOURCED
+            and record.indexing_state is IndexingState.READY
         )
         feedback = tuple(
             record for record in records if record.kind is RecordKind.DISCOVERY_FEEDBACK
         )
         if not sourced:
             raise WorkflowError("strategy requires at least one sourced public record")
-        feedback_text = " ".join(record.content.lower() for record in feedback)
-        shifted = "inpatient bed readiness" in feedback_text
         config = track_config(track)
-        if shifted:
+        feedback_direction = _feedback_direction(feedback)
+        if feedback_direction == "inpatient":
             recommendation = (
                 "Prioritize discovery about inpatient bed readiness and discharge "
                 "coordination before evaluating ED arrival forecasting."
             )
             rationale = (
-                "Discovery feedback changed the priority toward inpatient "
+                f"{_feedback_label(feedback)} changed the priority toward inpatient "
                 "readiness; public evidence still does not establish buyer intent, "
                 "available data, or pilot value."
             )
-        else:
-            recommendation = f"{config.objective}"
-            rationale = (
-                "Live public evidence establishes context, but not the operational "
-                "bottleneck, decision owner, data availability, or willingness to "
-                "run a collaboration."
+        elif feedback_direction == "ed":
+            recommendation = (
+                "Prioritize discovery about ED arrival demand and treatment-space "
+                "coordination before evaluating inpatient bed readiness."
             )
+            rationale = (
+                f"{_feedback_label(feedback)} changed the priority toward ED arrival "
+                "demand; public evidence still does not establish buyer intent, "
+                "available data, or pilot value."
+            )
+        else:
+            recommendation = config.objective
+            if feedback:
+                rationale = (
+                    "The recalled feedback does not state a supported priority clearly "
+                    "enough to change direction; public records still do not establish "
+                    "the operational bottleneck, buyer intent, available data, or "
+                    "willingness to run a pilot."
+                )
+            else:
+                rationale = (
+                    "Public records provide hospital-specific context but do not "
+                    "establish the operational bottleneck, buyer intent, available "
+                    "data, or willingness to run a pilot."
+                )
         source_ids = tuple(record.record_id for record in sourced)
         feedback_ids = tuple(record.record_id for record in feedback)
         strategy = StrategyDocument(
@@ -464,7 +485,7 @@ class HospitalGTMWorkflow:
                 "Discharge coordination signals",
             ),
             success_measure="A measure agreed with the customer after discovery.",
-            source_record_ids=source_ids + feedback_ids,
+            source_record_ids=source_ids,
             feedback_record_ids=feedback_ids,
         )
         record = strategy.to_record(self.author_agent)
@@ -607,15 +628,13 @@ class HospitalGTMWorkflow:
         )
         if prior.recommendation == revised.recommendation:
             change_explanation = (
-                "Fresh-session recall retrieved feedback, but the "
-                "recommendation did not change: "
-                f"{revised.recommendation}"
+                "Fresh-session recall retrieved feedback, but the recommendation did "
+                "not change."
             )
         else:
             change_explanation = (
-                "Fresh-session recall retrieved feedback and changed "
-                "the recommendation from "
-                f"{prior.recommendation} to {revised.recommendation}"
+                "Fresh-session recall changed the recommendation from "
+                f"{prior.recommendation} to {revised.recommendation}."
             )
         return LearningSummary(
             hospital_id=prior.hospital_id,
@@ -812,6 +831,95 @@ class HospitalGTMWorkflow:
                 f"memory record {record.record_id} is not ready: {result.error or 'unknown error'}"
             )
         return result
+
+
+def _feedback_direction(records: Sequence[MemoryRecord]) -> str | None:
+    """Extract an unambiguous priority from simulated feedback.
+
+    Args:
+        records: Feedback records recalled for one hospital.
+
+    Returns:
+        `inpatient`, `ed`, or `None` when feedback is absent or ambiguous.
+    """
+    directions: set[str] = set()
+    for record in records:
+        text = " ".join(record.content.lower().split())
+        ed_negative = _contains_any(
+            text,
+            (
+                "do not prioritize ed arrival",
+                "don't prioritize ed arrival",
+                "not prioritize ed arrival",
+            ),
+        )
+        inpatient_negative = _contains_any(
+            text,
+            (
+                "do not prioritize inpatient bed readiness",
+                "don't prioritize inpatient bed readiness",
+                "not prioritize inpatient bed readiness",
+            ),
+        )
+        ed_positive = _contains_any(
+            text,
+            (
+                "focus on ed arrival",
+                "focus on ed arrivals",
+                "prioritize ed arrival",
+                "prioritize ed arrivals",
+            ),
+        )
+        inpatient_positive = _contains_any(
+            text,
+            (
+                "focus on inpatient bed readiness",
+                "prioritize inpatient bed readiness",
+                "inpatient bed readiness before ed arrival",
+                "inpatient bed readiness and discharge coordination before ed",
+            ),
+        )
+        if inpatient_negative and ed_positive:
+            directions.add("ed")
+        elif ed_negative and inpatient_positive:
+            directions.add("inpatient")
+        elif ed_positive and not ed_negative and not inpatient_negative:
+            directions.add("ed")
+        elif inpatient_positive and not inpatient_negative and not ed_negative:
+            directions.add("inpatient")
+    if len(directions) == 1:
+        return next(iter(directions))
+    return None
+
+
+def _feedback_label(records: Sequence[MemoryRecord]) -> str:
+    """Describe the evidence status of recalled feedback.
+
+    Args:
+        records: Feedback records recalled for one hospital.
+
+    Returns:
+        Human-readable feedback evidence label.
+    """
+    statuses = {record.evidence_status for record in records}
+    if EvidenceStatus.SIMULATED in statuses:
+        return "Simulated discovery feedback"
+    if EvidenceStatus.FOUNDER_CONFIRMED in statuses:
+        return "Founder-confirmed discovery feedback"
+    return "Discovery feedback"
+
+
+def _contains_any(text: str, phrases: Sequence[str]) -> bool:
+    """Check whether text contains one of the supplied phrases.
+
+    Args:
+        text: Normalized feedback text.
+        phrases: Supported decision phrases.
+
+    Returns:
+        Whether one phrase occurs in the text.
+    """
+    return any(phrase in text for phrase in phrases)
 
 
 def _answer_from_band(payload: Mapping[str, object]) -> str:

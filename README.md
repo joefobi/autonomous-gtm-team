@@ -98,10 +98,16 @@ that an unavailable Band integration completed.
 ## GTM workflow
 
 PR3 adds agent-led live research, strategy versions, founder approval,
-draft-only outreach, founder-confirmed discovery feedback, and fresh-session
-strategy revision.
-See `docs/gtm-workflow.md` for the live-source workflow and `outputs/` for
-generated artifacts.
+draft-only outreach, explicitly labeled discovery feedback, and fresh-session
+strategy revision. See `docs/gtm-workflow.md` for the live-source workflow and
+`outputs/` for generated artifacts.
+
+## Agent evals
+
+PR4 adds scenario-based evaluations for live Band runs. Use the exact user
+prompts in `evals/scenarios/`, capture the room and memory artifacts, and run
+`agent-eval`; see `evals/README.md` and `evals/rubric.md` for deterministic
+checks and human review.
 
 ## Flexprice and Snyk
 
