@@ -17,7 +17,26 @@ python3 -m venv .venv
 Run the same checks used in CI:
 
 ```bash
-.venv/bin/black --check src
-.venv/bin/isort --check-only src
+.venv/bin/black --check src tests
+.venv/bin/isort --check-only src tests
 .venv/bin/mypy src
+.venv/bin/python -m unittest discover -s tests
 ```
+
+## Shared memory service
+
+Start the loopback service with a persistent SQLite database:
+
+```bash
+.venv/bin/memory-client serve --db data/memory.sqlite3
+```
+
+The service exposes `POST /memories`, `GET /memories/{id}`, `POST /recall`,
+`POST /decisions`, and `GET /health`. SQLite stores canonical records,
+provenance, idempotency keys, indexing state, and decisions. The default
+keyword index is deterministic and local; Cognee can be selected with
+`--index cognee --dataset hospital_gtm` after installing and configuring it.
+
+The first public-evidence fixture uses The Johns Hopkins Hospital and records
+only a sourced public page reference. It does not assert a customer need or
+buying intent.
