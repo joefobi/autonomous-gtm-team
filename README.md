@@ -25,7 +25,7 @@ Python memory and workflow tools:
 | Role | Responsibility | Handoff |
 | --- | --- | --- |
 | Strategist | Owns the Band plan and board, recalls memory, proposes strategy, and asks for founder approval. | Assigns research and receives the researcher handoff. |
-| Researcher | Reads supplied or configured public sources, preserves provenance, and writes ready memory records. | Mentions the strategist with the hospital ID, task ID, record IDs, limitations, and open questions. |
+| Researcher | Uses Band/Codex native web search, preserves provenance for selected pages, and writes ready memory records. | Mentions the strategist with the hospital ID, task ID, queries, discovered URLs, record IDs, limitations, and open questions. |
 | Outreach writer | Retrieves the approved strategy and drafts source-grounded discovery outreach. | Receives only a current, founder-approved strategy version; never sends externally. |
 
 Band remains the source of truth for rooms, plans, tasks, messages, and human
@@ -54,7 +54,7 @@ Create a project-local virtual environment and install the development tools:
 ```bash
 python3 -m venv .venv
 .venv/bin/python -m pip install --upgrade pip
-.venv/bin/python -m pip install -e ".[dev]"
+.venv/bin/python -m pip install -e ".[dev,demo]"
 ```
 
 Run the same checks used in CI:
@@ -80,8 +80,12 @@ provenance, idempotency keys, indexing state, and decisions. The default
 keyword index is deterministic and local; Cognee can be selected with
 `--index cognee --dataset hospital_gtm` after installing and configuring it.
 
-The research workflow accepts live HTTP(S) sources and records only sourced
-public evidence. It does not assert a customer need or buying intent.
+The researcher discovers sources with the native Band/Codex web-search tools;
+this repository fetches and records only the URLs the agent selected. It does
+not assert a customer need or buying intent. The `customer` track evaluates a
+possible buyer for the built model; the `data_collaboration` track evaluates a
+research or data partnership. Search topics and outreach language change with
+the selected track.
 
 ## Band coordination
 
@@ -93,8 +97,9 @@ that an unavailable Band integration completed.
 
 ## GTM workflow
 
-PR3 adds sourced research, strategy versions, founder approval, draft-only
-outreach, founder-confirmed discovery feedback, and fresh-session strategy revision.
+PR3 adds agent-led live research, strategy versions, founder approval,
+draft-only outreach, founder-confirmed discovery feedback, and fresh-session
+strategy revision.
 See `docs/gtm-workflow.md` for the live-source workflow and `outputs/` for
 generated artifacts.
 

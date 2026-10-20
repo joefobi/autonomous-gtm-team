@@ -176,6 +176,13 @@ class CogneeIndex:
             hits: Mutable hit collection.
             evidence: Inherited evidence text.
         """
+        for method_name in ("model_dump", "dict"):
+            method = getattr(value, method_name, None)
+            if callable(method):
+                dumped = method()
+                if dumped is not value:
+                    cls._collect_hits(dumped, hits, evidence)
+                return
         if isinstance(value, Mapping):
             record_id = value.get("record_id")
             if isinstance(record_id, str) and record_id.strip():
