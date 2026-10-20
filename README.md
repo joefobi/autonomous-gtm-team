@@ -48,3 +48,10 @@ founder questions. Configure the three role prompts in `prompts/`, publish
 `plans/hospital-evaluation.md`, and follow `docs/band-setup.md` for the
 two-agent smoke test. The adapter reports command failures instead of claiming
 that an unavailable Band integration completed.
+
+## GTM workflow
+
+PR3 adds sourced research, strategy versions, founder approval, draft-only
+outreach, simulated discovery feedback, and fresh-session strategy revision.
+See `docs/gtm-workflow.md` for the runnable demo and `outputs/` for committed
+example artifacts.

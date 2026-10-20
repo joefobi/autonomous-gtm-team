@@ -1,0 +1,6 @@
+{
+  "source_title": "Simulated discovery note: inpatient bed readiness",
+  "source_file": "fixtures/johns_hopkins_hospital/discovery_feedback.json",
+  "observed_at": "2026-10-20",
+  "content": "SIMULATED CUSTOMER FEEDBACK: An operations leader wants the next conversation to focus on inpatient bed readiness and discharge coordination before ED arrival forecasting. This note is fictional and does not represent a real Johns Hopkins statement."
+}
