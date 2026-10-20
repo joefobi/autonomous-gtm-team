@@ -646,10 +646,7 @@ class HospitalGTMWorkflow:
             feedback_evidence_statuses=tuple(
                 record.evidence_status for record in feedback_records
             ),
-            retrieved_record_ids=(
-                *revised.source_record_ids,
-                *revised.feedback_record_ids,
-            ),
+            retrieved_record_ids=revised.source_record_ids,
             change_explanation=change_explanation,
         )
 
