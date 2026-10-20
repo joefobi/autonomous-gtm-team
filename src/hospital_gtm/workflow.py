@@ -34,6 +34,7 @@ from hospital_gtm.research_tools import (
     load_source,
     stable_record_id,
 )
+from hospital_gtm.tracks import OutreachTrack, track_config
 
 
 class WorkflowError(RuntimeError):
@@ -92,6 +93,7 @@ class StrategyDocument:
     """Versioned opportunity strategy derived from recalled evidence."""
 
     hospital_id: str
+    track: OutreachTrack
     strategy_version: str
     recommendation: str
     rationale: str
@@ -112,6 +114,7 @@ class StrategyDocument:
         """
         return {
             "hospital_id": self.hospital_id,
+            "track": self.track.value,
             "strategy_version": self.strategy_version,
             "recommendation": self.recommendation,
             "rationale": self.rationale,
@@ -172,6 +175,7 @@ class OutreachDraft:
     """Approval-gated discovery outreach draft."""
 
     hospital_id: str
+    track: OutreachTrack
     strategy_version: str
     subject: str
     body: str
@@ -186,6 +190,7 @@ class OutreachDraft:
         """
         return {
             "hospital_id": self.hospital_id,
+            "track": self.track.value,
             "strategy_version": self.strategy_version,
             "subject": self.subject,
             "body": self.body,
@@ -295,7 +300,7 @@ class HospitalGTMWorkflow:
 
         Args:
             hospital_id: Hospital namespace for the research.
-            sources: Local source files or public URLs.
+            sources: Local files or public URLs selected by the researching agent.
             author_agent: Researcher identity writing findings.
 
         Returns:
@@ -371,6 +376,7 @@ class HospitalGTMWorkflow:
         hospital_id: str,
         strategy_version: str,
         research_record_ids: Sequence[str] = (),
+        track: OutreachTrack = OutreachTrack.CUSTOMER,
     ) -> StrategyResult:
         """Recall evidence and persist a versioned strategy.
 
@@ -378,6 +384,7 @@ class HospitalGTMWorkflow:
             hospital_id: Hospital namespace for the strategy.
             strategy_version: New strategy version identifier.
             research_record_ids: Optional records to include explicitly.
+            track: Customer or data-collaboration objective.
 
         Returns:
             Stored strategy and indexing response.
@@ -405,6 +412,7 @@ class HospitalGTMWorkflow:
         )
         if not sourced:
             raise WorkflowError("strategy requires at least one sourced public record")
+        config = track_config(track)
         feedback_direction = _feedback_direction(feedback)
         if feedback_direction == "inpatient":
             recommendation = (
@@ -427,10 +435,7 @@ class HospitalGTMWorkflow:
                 "available data, or pilot value."
             )
         else:
-            recommendation = (
-                "Interview ED and inpatient operations leaders before selecting an "
-                "arrival-forecasting or bed-readiness pilot."
-            )
+            recommendation = config.objective
             if feedback:
                 rationale = (
                     "The recalled feedback does not state a supported priority clearly "
@@ -448,13 +453,11 @@ class HospitalGTMWorkflow:
         feedback_ids = tuple(record.record_id for record in feedback)
         strategy = StrategyDocument(
             hospital_id=hospital_id,
+            track=track,
             strategy_version=strategy_version,
             recommendation=recommendation,
             rationale=rationale,
-            buyer_hypotheses=(
-                "ED operations leadership may own arrival and treatment-space planning.",
-                "Inpatient flow or bed-management leadership may own readiness and boarding.",
-            ),
+            buyer_hypotheses=(*config.buyer_hypotheses,),
             unknowns=(
                 "Actual patient-flow bottleneck",
                 "Decision owner and buying process",
@@ -567,16 +570,18 @@ class HospitalGTMWorkflow:
         source = sourced_records[0]
         excerpt = source.content.split("Excerpt:", 1)[-1].strip()
         body = (
-            f"Hello,\n\nI am exploring how hospital teams plan patient flow. "
+            f"Hello,\n\nI am exploring {track_config(strategy.track).name} "
+            "opportunities in hospital patient flow. "
             f"Public material for {source.source_title or strategy.hospital_id} "
             f"references: {excerpt}\n\n"
-            "Would you be open to a short discovery conversation about where flow "
-            "becomes constrained, which team owns the response, and what data or "
-            "pilot measure would be useful? This is a discovery request, not a "
-            "claim of clinical or throughput improvement.\n\nBest,\nFounder"
+            f"Would you be open to a short discovery conversation about "
+            f"{track_config(strategy.track).outreach_action.lower()} This is a "
+            "discovery request, not a claim of clinical or throughput improvement."
+            "\n\nBest,\nFounder"
         )
         draft = OutreachDraft(
             hospital_id=strategy.hospital_id,
+            track=strategy.track,
             strategy_version=strategy.strategy_version,
             subject="Exploring patient-flow planning",
             body=body,
@@ -691,12 +696,13 @@ class HospitalGTMWorkflow:
         sources: Sequence[str | Path],
         feedback_source: str | Path,
         feedback_status: EvidenceStatus = EvidenceStatus.FOUNDER_CONFIRMED,
+        track: OutreachTrack = OutreachTrack.CUSTOMER,
     ) -> DemoResult:
         """Run research, approval, outreach, feedback, and fresh recall.
 
         Args:
             hospital_id: Hospital namespace for the demo.
-            sources: Supplied public research sources.
+            sources: URLs found by the agent's native Band/Codex search.
             feedback_source: Discovery feedback source file or public URL.
             feedback_status: Provenance status for the feedback source.
 
@@ -706,7 +712,7 @@ class HospitalGTMWorkflow:
         research_result = self.research(hospital_id, sources)
         initial_version, revised_version = self._next_demo_versions(hospital_id)
         initial = self.generate_strategy(
-            hospital_id, initial_version, research_result.record_ids()
+            hospital_id, initial_version, research_result.record_ids(), track
         )
         approval = self.approve_strategy(initial.strategy)
         if not approval.check.approved:
@@ -721,7 +727,9 @@ class HospitalGTMWorkflow:
             self.band,
             self.author_agent,
         )
-        revised = fresh_session.generate_strategy(hospital_id, revised_version)
+        revised = fresh_session.generate_strategy(
+            hospital_id, revised_version, track=track
+        )
         learning = fresh_session.build_learning_summary(
             initial.strategy, revised.strategy
         )
@@ -935,6 +943,8 @@ def _render_brief(
     lines = [
         f"# Opportunity brief: {strategy.hospital_id}",
         "",
+        f"Track: `{strategy.track.value}`",
+        "",
         f"Strategy version: `{strategy.strategy_version}`",
         "",
         "## Recommendation",
@@ -1014,6 +1024,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="gtm-demo")
     parser.add_argument("--hospital-id", required=True)
     parser.add_argument("--source", action="append", required=True)
+    parser.add_argument(
+        "--track",
+        choices=tuple(track.value for track in OutreachTrack),
+        default=OutreachTrack.CUSTOMER.value,
+        help="Research and outreach objective.",
+    )
     parser.add_argument("--feedback", required=True)
     parser.add_argument(
         "--feedback-status",
@@ -1050,6 +1066,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         args.source,
         args.feedback,
         EvidenceStatus(args.feedback_status),
+        track=OutreachTrack(args.track),
     )
     print(
         json.dumps(

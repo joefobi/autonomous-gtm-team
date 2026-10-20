@@ -9,7 +9,6 @@ __pycache__/
 htmlcov/
 dist/
 build/
-DESIGN.md
 data/
 *.sqlite3
 *.sqlite3-shm

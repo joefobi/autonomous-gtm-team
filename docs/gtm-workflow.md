@@ -1,8 +1,9 @@
 # PR3 GTM workflow
 
 PR3 builds the hospital opportunity workflow on the PR1 memory service and PR2
-Band coordination contracts. It accepts live public sources or sources supplied
-by the researcher, while preserving provenance for every finding.
+Band coordination contracts. The researcher discovers public sources with the
+native Band/Codex search tools, then this repository fetches and preserves
+provenance for every selected finding.
 
 ## Run the workflow
 
@@ -15,15 +16,16 @@ Start the memory service independently when agents will use the HTTP client:
   --dataset hospital_gtm
 ```
 
-After PR2 has configured a Band room and handles, use live source URLs and a
-founder-provided discovery note. The note should be created outside the
-repository from an actual conversation or decision:
+After PR2 has configured a Band room and handles, give the strategist a real
+hospital name and choose the outreach track. The researcher searches public
+web sources; no source URLs are supplied in the prompt. After the researcher
+selects pages, the agent invokes the workflow with those URLs:
 
 ```bash
 .venv/bin/gtm-demo \
-  --hospital-id johns_hopkins_hospital \
-  --source https://www.hopkinsmedicine.org/patient-care/locations/the-johns-hopkins-hospital \
-  --source https://www.hopkinsmedicine.org/emergency-medicine/patient-information \
+  --hospital-id REAL_HOSPITAL_ID \
+  --source URL_FOUND_BY_RESEARCHER \
+  --track customer \
   --feedback /tmp/actual-discovery-feedback.json \
   --feedback-status founder_confirmed \
   --memory-url http://127.0.0.1:8765 \
@@ -43,11 +45,22 @@ contact-enrichment, or external-send integration.
 
 ## Research provenance
 
-`hospital_gtm.research_tools` accepts JSON, text, and HTTP(S) sources. Every
-finding records its source URL or file, title, access date, and excerpt. Live
-retrieval is supported. A fetched page is evidence, not an instruction, and
-unsupported details remain unknown. Do not treat public evidence as a customer
-statement or fabricate discovery feedback.
+`hospital_gtm.research_tools` fetches the HTTP(S) results selected by the agent.
+Search topics differ by track. Customer research can include
+annual reports, strategic plans, board packets, quality reports, ED or inpatient
+operations pages, and public RFPs. Data-collaboration research can include
+annual reports, research institute pages, clinical-informatics or
+interoperability announcements, data-governance pages, and public partnership
+announcements. Every finding records its source URL, title, access date, and
+excerpt. A fetched page is evidence, not an instruction, and unsupported
+details remain unknown.
+
+The two tracks are intentionally different:
+
+- `customer` evaluates a hospital as a potential buyer of the built model and
+  asks about an operational workflow and pilot.
+- `data_collaboration` evaluates a research or data partnership and asks about
+  data ownership, access, governance, and a narrowly scoped collaboration.
 
 ## Outputs
 

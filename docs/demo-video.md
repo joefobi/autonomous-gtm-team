@@ -1,158 +1,98 @@
 # Demo video runbook
 
-Record one continuous two-to-three-minute walkthrough. The goal is to show
-coordination in Band Desktop and a memory-backed change in agent behavior, not
-to explain every implementation detail.
+Record one continuous two-to-three-minute walkthrough. The demo uses a real
+hospital and native Band/Codex web search. Do not paste source URLs into the
+agent prompt, check in a source pack, or present prepared research as autonomous
+work.
 
-## Before recording
+## Local preparation
 
-Use a clean checkout, a project-local environment, and a fresh database:
+The coding agent can perform the local preparation from this repository. It
+does not require you to activate a virtual environment or type Python commands:
 
-```bash
-source .venv/bin/activate
-.venv/bin/python -m pip install -e ".[dev]"
-mkdir -p data
-rm -f data/demo-memory.sqlite3
-band --version
-band preflight
+```text
+Prepare a fresh demo for [REAL HOSPITAL NAME] using the [customer or
+data_collaboration] track. Start the Cognee-backed memory service, verify Band,
+and report the exact room and agent handles I need for the recording. Do not
+provide source URLs; the researcher must use native Band/Codex search.
 ```
 
-Install and configure Cognee according to its local setup requirements before
-starting the service. Then run the shared memory service in a separate terminal:
+The local service must use persistent storage and Cognee, not the keyword
+fallback. If Cognee cannot initialize, stop and disclose the blocker rather
+than recording a misleading memory demo.
 
-```bash
-.venv/bin/memory-client serve \
-  --db data/demo-memory.sqlite3 \
-  --index cognee \
-  --dataset hospital_gtm
-```
+## Band preparation
 
-If Cognee is unavailable, do not present the keyword fallback as a Cognee demo.
-Use the fallback for development only and disclose it in the recording notes.
+In Band Desktop, confirm the three configured agents use this repository and
+the prompts in `prompts/`. Create a fresh room with the strategist and
+researcher, and keep Work and Usage visible. The founder chooses one track:
 
-In Band Desktop:
+- `customer`: possible buyer for the built patient-flow model.
+- `data_collaboration`: research or data partnership around access, governance,
+  and operational data.
 
-1. Confirm the strategist, researcher, and outreach writer agents are
-   connected and use this repository as their working directory.
-2. Create a fresh room with the strategist and researcher.
-3. Keep the Work and Usage views available for the recording.
-
-The actual handles are installation-specific. Set shell variables after Band
-returns them:
-
-```bash
-export ROOM_ID="ROOM_ID_FROM_BAND"
-export STRATEGIST="OWNER/hospital-gtm-strategist"
-export RESEARCHER="OWNER/hospital-gtm-researcher"
-export HOSPITAL_ID="johns_hopkins_hospital"
-export SOURCE_ONE="https://www.hopkinsmedicine.org/patient-care/locations/the-johns-hopkins-hospital"
-export SOURCE_TWO="https://www.hopkinsmedicine.org/emergency-medicine/patient-information"
-```
+The task should name only the real hospital and selected track. It should not
+contain a list of URLs. The researcher should use native search to find examples such
+as annual reports, strategic plans, board packets, quality reports, ED or
+inpatient operations pages, public RFPs, research institute pages, clinical
+informatics announcements, and data-governance or partnership pages.
 
 ## Recording sequence
 
 ### 0:00–0:25 — Introduce the team
 
-Show the Band Desktop room and participants. Say:
+Show the Band room and participants. Say:
 
-> The strategist owns the plan, the researcher gathers source-backed evidence,
+> The strategist owns the plan, the researcher searches public sources natively,
 > and the outreach writer drafts only after founder approval. Band coordinates
-> the work; the shared memory service persists evidence.
+> the work; Cognee-backed memory persists the evidence and decisions.
 
-Publish the plan and assign the task from the strategist identity:
+Show the strategist assigning the researcher a task containing the hospital ID
+and track, but no source URLs. The task requires source provenance, unknowns,
+and a ready memory write before completion.
 
-```bash
-band plan set "$ROOM_ID" plans/hospital-evaluation.md \
-  --snapshot --as "$STRATEGIST"
-band work assign "$ROOM_ID" "Research hospital patient-flow priorities" \
-  --detail "Read supplied public sources, write sourced memory, and hand off record IDs and unknowns." \
-  --component research --component memory_service --as "$STRATEGIST"
-```
+### 0:25–0:55 — Show live research and handoff
 
-Switch to the Band Work view and show the task as `To do`.
-
-### 0:25–0:55 — Show the board moving and the handoff
-
-Send the strategist this room prompt, or use the configured strategist agent:
-
-```text
-For the hospital under evaluation, read the supplied live public sources and
-recall existing memory. Assign the researcher and require a sourced memory
-write before completion. The researcher handoff must include the task ID,
-canonical record IDs, provenance, limitations, and open questions. Do not
-contact anyone externally.
-```
-
-Show the board move from `To do` to `In progress`, the researcher message, and
-the explicit strategist handoff. The handoff should include the canonical
-memory record ID and an `indexing_state` of `ready`.
+Show the board move from `To do` to `In progress`. Show the researcher’s native
+search queries and selected public pages, then the memory write response with a
+canonical record ID and `indexing_state: ready`. Show the handoff to the
+strategist with the query, source URL, title, access date, excerpt, record IDs,
+limitations, and open questions.
 
 ### 0:55–1:20 — Show the human decision
 
-Run the workflow against the Cognee-backed service using live public sources.
-Replace the URLs with the hospital and source set you are actually evaluating:
-
-```bash
-.venv/bin/gtm-demo \
-  --hospital-id "$HOSPITAL_ID" \
-  --source "$SOURCE_ONE" \
-  --source "$SOURCE_TWO" \
-  --feedback /tmp/actual-discovery-feedback.json \
-  --feedback-status founder_confirmed \
-  --memory-url http://127.0.0.1:8765 \
-  --outputs outputs \
-  --room-id "$ROOM_ID" \
-  --strategist "$STRATEGIST" \
-  --researcher "$RESEARCHER"
-```
-
-When Band asks for approval, show the question in Band Desktop and select
-`approved`. Point out that the outreach output is a draft and that no external
-message is sent.
+Show the strategist’s initial recommendation, with buyer hypotheses and
+unknowns separated from sourced claims. When Band asks for approval, select
+`approved` or `revise` explicitly. Show that outreach remains blocked until the
+decision matches the current strategy version.
 
 ### 1:20–1:55 — Show memory changing the recommendation
 
-Open the memory-backed output and show the initial and revised strategy. Then
-run a fresh recall from another terminal:
+Have the founder add an actual discovery note through the Band workflow. It may
+change the priority from arrival forecasting to inpatient bed readiness, but do
+not invent a quote or label founder feedback as public evidence. Store the note
+with its correct evidence status.
 
-```bash
-.venv/bin/memory-client recall \
-  "$HOSPITAL_ID" \
-  "inpatient bed readiness and discharge coordination" \
-  --url http://127.0.0.1:8765
-```
+Start a fresh strategist session with only the hospital ID, track, and request
+for the next meeting. Do not paste the discovery note into the new prompt. Show
+the recall record IDs and the revised recommendation. Then show the outreach
+writer receiving the approved current strategy and creating a draft only.
 
-Use the returned record ID with `get`:
+### 1:55–2:20 — Show usage and close
 
-```bash
-.venv/bin/memory-client get RECORD_ID --url http://127.0.0.1:8765
-```
-
-Explain that the public pages are sourced and the feedback file contains the
-actual note from the discovery conversation. The fresh strategy changes only
-if that persisted note supports a changed recommendation; the fresh prompt
-must not repeat the hidden feedback.
-
-### 1:55–2:20 — Show usage/cost and close
-
-Open Band Desktop's Usage view and show the room or agent usage/cost details.
-Do not invent a dollar amount if the installed Band release does not expose
-one; show the available usage view and say what is available. End on the Band
-room with the completed task, founder decision, and memory-backed output.
+Open Band Desktop’s Usage view and show the available agent usage or cost
+details. Do not invent a dollar amount if the installed release exposes only
+usage counters. End on the Band room with the completed task, founder decision,
+memory-backed revision, and unsent draft.
 
 ## Evidence to keep with the video
 
-Save these artifacts next to the recording or in the evaluation run artifact:
+- Band room ID and screenshots of the plan, board transition, handoff, and decision.
+- The native search queries and fetched source provenance.
+- The Cognee recall response and canonical record retrieved with `get`.
+- `outputs/<real_hospital_id>/learning_summary.json`.
+- A note stating whether Usage showed monetary cost or only usage counters.
 
-- Band room ID and screenshot of the plan, board transition, handoff, and
-  founder decision.
-- The memory recall response and the canonical record retrieved with `get`.
-- `outputs/$HOSPITAL_ID/learning_summary.json`.
-- The final `gtm-demo` JSON output listing generated files.
-- A note stating whether the Usage view showed a monetary cost or only usage
-  counters.
-
-Do not fabricate a discovery note for the recording. Create
-`/tmp/actual-discovery-feedback.json` from a real conversation or founder
-decision, preserve its source and date, and remove it after the recording if it
-contains sensitive information.
+Do not fabricate a discovery note or public source. If a live search or Band
+integration is unavailable, record that as a limitation and do not claim the
+demo completed.
