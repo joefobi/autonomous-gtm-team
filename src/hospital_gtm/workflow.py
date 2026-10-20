@@ -380,16 +380,19 @@ class HospitalGTMWorkflow:
             records_by_id[record.record_id] = record
         records = tuple(records_by_id.values())
         sourced = tuple(
-            record for record in records if record.kind is RecordKind.PUBLIC_EVIDENCE
+            record
+            for record in records
+            if record.kind is RecordKind.PUBLIC_EVIDENCE
+            and record.evidence_status is EvidenceStatus.SOURCED
+            and record.indexing_state is IndexingState.READY
         )
         feedback = tuple(
             record for record in records if record.kind is RecordKind.DISCOVERY_FEEDBACK
         )
         if not sourced:
             raise WorkflowError("strategy requires at least one sourced public record")
-        feedback_text = " ".join(record.content.lower() for record in feedback)
-        shifted = "inpatient bed readiness" in feedback_text
-        if shifted:
+        feedback_direction = _feedback_direction(feedback)
+        if feedback_direction == "inpatient":
             recommendation = (
                 "Prioritize discovery about inpatient bed readiness and discharge "
                 "coordination before evaluating ED arrival forecasting."
@@ -399,14 +402,36 @@ class HospitalGTMWorkflow:
                 "readiness; public evidence still does not establish buyer intent, "
                 "available data, or pilot value."
             )
+        elif feedback_direction == "ed":
+            recommendation = (
+                "Prioritize discovery about ED arrival demand and treatment-space "
+                "coordination before evaluating inpatient bed readiness."
+            )
+            rationale = (
+                "Simulated discovery feedback changed the priority toward ED arrival "
+                "demand; public evidence still does not establish buyer intent, "
+                "available data, or pilot value."
+            )
+        elif feedback:
+            recommendation = (
+                "Keep the discovery direction unresolved until the hospital clarifies "
+                "whether ED arrivals, inpatient bed readiness, or another bottleneck "
+                "is the priority."
+            )
+            rationale = (
+                "The recalled feedback does not state a supported priority clearly "
+                "enough to choose a direction; public evidence still does not establish "
+                "the operational bottleneck, buyer intent, available data, or pilot "
+                "value."
+            )
         else:
             recommendation = (
                 "Interview ED and inpatient operations leaders before selecting an "
                 "arrival-forecasting or bed-readiness pilot."
             )
             rationale = (
-                "Public evidence establishes the hospital and emergency care, but "
-                "not the operational bottleneck, buyer, data availability, or "
+                "Public records provide hospital-specific context but do not establish "
+                "the operational bottleneck, buyer intent, available data, or "
                 "willingness to run a pilot."
             )
         source_ids = tuple(record.record_id for record in sourced)
@@ -568,6 +593,17 @@ class HospitalGTMWorkflow:
             raise WorkflowError("learning strategies must use one hospital")
         if not revised.feedback_record_ids:
             raise WorkflowError("learning summary requires feedback records")
+        if prior.recommendation == revised.recommendation:
+            change_explanation = (
+                "Fresh-session recall retrieved feedback, but the recommendation did "
+                "not change because the current direction already reflects that "
+                "feedback."
+            )
+        else:
+            change_explanation = (
+                "Fresh-session recall changed the recommendation from "
+                f"{prior.recommendation} to {revised.recommendation}."
+            )
         return LearningSummary(
             hospital_id=prior.hospital_id,
             prior_strategy_version=prior.strategy_version,
@@ -576,10 +612,7 @@ class HospitalGTMWorkflow:
             revised_recommendation=revised.recommendation,
             feedback_record_ids=revised.feedback_record_ids,
             retrieved_record_ids=revised.source_record_ids,
-            change_explanation=(
-                "Fresh-session recall retrieved simulated feedback that shifted the "
-                "priority from arrival forecasting toward inpatient bed readiness."
-            ),
+            change_explanation=change_explanation,
         )
 
     def write_outputs(
@@ -659,8 +692,9 @@ class HospitalGTMWorkflow:
             Full workflow result and output paths.
         """
         research_result = self.research(hospital_id, sources)
+        initial_version = self._next_strategy_version(hospital_id)
         initial = self.generate_strategy(
-            hospital_id, "strategy_v1", research_result.record_ids()
+            hospital_id, initial_version, research_result.record_ids()
         )
         approval = self.approve_strategy(initial.strategy)
         if not approval.check.approved:
@@ -673,7 +707,9 @@ class HospitalGTMWorkflow:
             self.band,
             self.author_agent,
         )
-        revised = fresh_session.generate_strategy(hospital_id, "strategy_v2")
+        revised = fresh_session.generate_strategy(
+            hospital_id, self._next_strategy_version(hospital_id)
+        )
         learning = fresh_session.build_learning_summary(
             initial.strategy, revised.strategy
         )
@@ -688,6 +724,32 @@ class HospitalGTMWorkflow:
             learning,
             paths,
         )
+
+    def _next_strategy_version(self, hospital_id: str) -> str:
+        """Allocate the next strategy version for a hospital.
+
+        Args:
+            hospital_id: Hospital namespace for the strategy history.
+
+        Returns:
+            A new `strategy_vN` version.
+        """
+        recalled = self.memory.recall(
+            hospital_id, "strategy_version recommendation feedback", limit=100
+        )
+        highest = 0
+        for match in recalled.matches:
+            record = match.record
+            if record.kind is not RecordKind.STRATEGY:
+                continue
+            version = record.strategy_version or ""
+            prefix = "strategy_v"
+            if not version.startswith(prefix):
+                continue
+            suffix = version[len(prefix) :]
+            if suffix.isdigit():
+                highest = max(highest, int(suffix))
+        return f"strategy_v{highest + 1}"
 
     def _remember_ready(self, record: MemoryRecord) -> RememberResult:
         """Persist a record and require ready indexing.
@@ -704,6 +766,59 @@ class HospitalGTMWorkflow:
                 f"memory record {record.record_id} is not ready: {result.error or 'unknown error'}"
             )
         return result
+
+
+def _feedback_direction(records: Sequence[MemoryRecord]) -> str | None:
+    """Extract an unambiguous priority from simulated feedback.
+
+    Args:
+        records: Feedback records recalled for one hospital.
+
+    Returns:
+        `inpatient`, `ed`, or `None` when feedback is absent or ambiguous.
+    """
+    directions: set[str] = set()
+    for record in records:
+        text = " ".join(record.content.lower().split())
+        if _contains_any(
+            text,
+            (
+                "do not prioritize inpatient bed readiness",
+                "don't prioritize inpatient bed readiness",
+                "not prioritize inpatient bed readiness",
+                "focus on ed arrival",
+                "focus on ed arrivals",
+                "prioritize ed arrival",
+                "prioritize ed arrivals",
+            ),
+        ):
+            directions.add("ed")
+        elif _contains_any(
+            text,
+            (
+                "focus on inpatient bed readiness",
+                "prioritize inpatient bed readiness",
+                "inpatient bed readiness before ed arrival",
+                "inpatient bed readiness and discharge coordination before ed",
+            ),
+        ):
+            directions.add("inpatient")
+    if len(directions) == 1:
+        return next(iter(directions))
+    return None
+
+
+def _contains_any(text: str, phrases: Sequence[str]) -> bool:
+    """Check whether text contains one of the supplied phrases.
+
+    Args:
+        text: Normalized feedback text.
+        phrases: Supported decision phrases.
+
+    Returns:
+        Whether one phrase occurs in the text.
+    """
+    return any(phrase in text for phrase in phrases)
 
 
 def _answer_from_band(payload: Mapping[str, object]) -> str:

@@ -3,6 +3,17 @@
   "name": "Conflicting evidence remains visible",
   "hospital_id": "johns_hopkins_hospital",
   "user_prompt": "Review the supplied hospital evidence, including conflicting operational claims. Preserve both claims, state what is unresolved, and propose discovery questions. Do not silently overwrite or resolve the conflict.",
+  "setup": {
+    "steps": [
+      "Create a fresh Band room and memory database.",
+      "Before the measured session, seed two separate ready public-evidence records for the scenario hospital from the reviewer-supplied conflicting sources.",
+      "Retain each source URL or file, title, access date, and excerpt; do not overwrite either record."
+    ],
+    "seed_inputs": [
+      "reviewer-supplied conflicting source A",
+      "reviewer-supplied conflicting source B"
+    ]
+  },
   "checks": {
     "require_plan": true,
     "require_research_task": true,

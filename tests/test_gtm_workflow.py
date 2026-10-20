@@ -9,7 +9,12 @@ from typing import Any
 
 from hospital_gtm.band import BandClient
 from hospital_gtm.coordination import BandCoordinator
-from hospital_gtm.models import EvidenceStatus, IndexingState, RecordKind
+from hospital_gtm.models import (
+    EvidenceStatus,
+    IndexingState,
+    MemoryRecord,
+    RecordKind,
+)
 from hospital_gtm.service import MemoryService
 from hospital_gtm.store import SQLiteRecordStore
 from hospital_gtm.workflow import HospitalGTMWorkflow
@@ -106,6 +111,100 @@ class GTMWorkflowTests(unittest.TestCase):
             self.assertEqual(
                 feedback_records[0].evidence_status, EvidenceStatus.SIMULATED
             )
+
+    def test_demo_allocates_new_versions_on_repeat_run(self) -> None:
+        """Allow a persisted demo database to run again without idempotency errors."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            memory = MemoryService(SQLiteRecordStore(root / "memory.sqlite3"))
+            runner = ApprovalRunner()
+            band = BandCoordinator(
+                BandClient(runner=runner),
+                "room-001",
+                "owner/strategist",
+                "owner/researcher",
+            )
+            workflow = HospitalGTMWorkflow(memory, root / "outputs", band)
+
+            first = workflow.run_demo(
+                "johns_hopkins_hospital",
+                (SOURCE,),
+                FEEDBACK,
+            )
+            second = workflow.run_demo(
+                "johns_hopkins_hospital",
+                (SOURCE,),
+                FEEDBACK,
+            )
+
+            self.assertEqual(
+                first.initial_strategy.strategy.strategy_version, "strategy_v1"
+            )
+            self.assertEqual(
+                second.initial_strategy.strategy.strategy_version, "strategy_v3"
+            )
+        self.assertEqual(
+            second.revised_strategy.strategy.strategy_version, "strategy_v4"
+        )
+        self.assertIn(
+            "recommendation did not change",
+            second.learning_summary.change_explanation,
+        )
+
+    def test_negative_feedback_does_not_prioritize_inpatient_readiness(self) -> None:
+        """Interpret an explicit negative feedback decision in the right direction."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            feedback_path = root / "feedback.json"
+            feedback_path.write_text(
+                json.dumps(
+                    {
+                        "source_title": "Simulated negative feedback",
+                        "source_file": str(feedback_path),
+                        "observed_at": "2026-10-20",
+                        "content": "Do not prioritize inpatient bed readiness; focus on ED arrivals.",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            workflow = HospitalGTMWorkflow(
+                MemoryService(SQLiteRecordStore(root / "memory.sqlite3"))
+            )
+            workflow.research("johns_hopkins_hospital", (SOURCE,))
+            workflow.store_feedback("johns_hopkins_hospital", feedback_path)
+
+            result = workflow.generate_strategy("johns_hopkins_hospital", "strategy_v1")
+
+            self.assertTrue(
+                result.strategy.recommendation.startswith(
+                    "Prioritize discovery about ED arrival demand"
+                )
+            )
+
+    def test_unverified_public_evidence_cannot_support_strategy(self) -> None:
+        """Do not treat unverified public records as sourced evidence."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            memory = MemoryService(SQLiteRecordStore(root / "memory.sqlite3"))
+            unverified = MemoryRecord(
+                record_id="unverified_public",
+                hospital_id="johns_hopkins_hospital",
+                kind=RecordKind.PUBLIC_EVIDENCE,
+                content="Claim: emergency patient flow. Excerpt: supplied context.",
+                evidence_status=EvidenceStatus.UNVERIFIED,
+                author_agent="test",
+                idempotency_key="test:unverified_public",
+                source_file="tests/fixture.md",
+                source_title="Test source",
+                indexing_state=IndexingState.READY,
+            )
+            result = memory.remember(unverified)
+            self.assertEqual(result.indexing_state, IndexingState.READY)
+
+            with self.assertRaisesRegex(RuntimeError, "sourced public record"):
+                HospitalGTMWorkflow(memory).generate_strategy(
+                    "johns_hopkins_hospital", "strategy_v1"
+                )
 
     def test_research_requires_sources_and_preserves_provenance(self) -> None:
         """Require a source and retain its URL, file, title, and excerpt."""

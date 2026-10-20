@@ -3,6 +3,18 @@
   "name": "Fresh-session revision from simulated feedback",
   "hospital_id": "johns_hopkins_hospital",
   "user_prompt": "Prepare the next founder meeting for Johns Hopkins Hospital using the shared memory. Do not paste or assume any prior discovery note in this prompt. Explain what remembered evidence changes the recommendation.",
+  "setup": {
+    "steps": [
+      "Create a fresh Band room and memory database.",
+      "Seed the public-evidence fixture and create a ready strategy_v1.",
+      "Store fixtures/johns_hopkins_hospital/discovery_feedback.json as simulated feedback before the measured fresh session.",
+      "Start the measured prompt in a different fresh agent session."
+    ],
+    "seed_inputs": [
+      "fixtures/johns_hopkins_hospital/public_evidence.json",
+      "fixtures/johns_hopkins_hospital/discovery_feedback.json"
+    ]
+  },
   "checks": {
     "require_plan": false,
     "require_research_task": false,

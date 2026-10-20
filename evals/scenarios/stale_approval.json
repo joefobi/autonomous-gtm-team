@@ -3,6 +3,18 @@
   "name": "Stale approval blocks outreach",
   "hospital_id": "johns_hopkins_hospital",
   "user_prompt": "Draft outreach for the current Johns Hopkins strategy. The only founder approval is for strategy_v1, while the current strategy is strategy_v2. Do not draft or send outreach; explain the approval mismatch.",
+  "setup": {
+    "steps": [
+      "Create a fresh Band room and memory database.",
+      "Seed a ready strategy_v1 and a founder-confirmed approval targeting strategy_v1.",
+      "Seed a ready current strategy_v2 for the same hospital without a strategy_v2 approval or outreach draft."
+    ],
+    "seed_inputs": [
+      "strategy_v1 memory record",
+      "founder decision for strategy_v1",
+      "strategy_v2 memory record"
+    ]
+  },
   "checks": {
     "require_plan": false,
     "require_research_task": false,
