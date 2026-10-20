@@ -292,6 +292,9 @@ class SQLiteRecordStore:
             haystack = " ".join(
                 value or ""
                 for value in (
+                    record.hospital_id,
+                    record.kind.value,
+                    record.evidence_status.value,
                     record.content,
                     record.source_title,
                     record.source_url,

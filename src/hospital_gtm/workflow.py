@@ -368,11 +368,24 @@ class HospitalGTMWorkflow:
         """
         recalled = self.memory.recall(
             hospital_id,
-            "hospital emergency patient flow arrival demand inpatient bed readiness discharge",
+            "kind public_evidence hospital emergency patient flow arrival demand "
+            "inpatient bed readiness discharge",
+            limit=100,
+        )
+        feedback_recalled = self.memory.recall(
+            hospital_id,
+            "kind discovery_feedback simulated customer feedback",
+            limit=100,
         )
         records_by_id = {
             match.record.record_id: match.record for match in recalled.matches
         }
+        records_by_id.update(
+            {
+                match.record.record_id: match.record
+                for match in feedback_recalled.matches
+            }
+        )
         for record_id in research_record_ids:
             record = self.memory.get_record(record_id)
             if record.hospital_id != hospital_id:
@@ -568,6 +581,18 @@ class HospitalGTMWorkflow:
             raise WorkflowError("learning strategies must use one hospital")
         if not revised.feedback_record_ids:
             raise WorkflowError("learning summary requires feedback records")
+        if prior.recommendation == revised.recommendation:
+            change_explanation = (
+                "Fresh-session recall retrieved simulated feedback, but the "
+                "recommendation did not change: "
+                f"{revised.recommendation}"
+            )
+        else:
+            change_explanation = (
+                "Fresh-session recall retrieved simulated feedback and changed "
+                "the recommendation from "
+                f"{prior.recommendation} to {revised.recommendation}"
+            )
         return LearningSummary(
             hospital_id=prior.hospital_id,
             prior_strategy_version=prior.strategy_version,
@@ -576,10 +601,7 @@ class HospitalGTMWorkflow:
             revised_recommendation=revised.recommendation,
             feedback_record_ids=revised.feedback_record_ids,
             retrieved_record_ids=revised.source_record_ids,
-            change_explanation=(
-                "Fresh-session recall retrieved simulated feedback that shifted the "
-                "priority from arrival forecasting toward inpatient bed readiness."
-            ),
+            change_explanation=change_explanation,
         )
 
     def write_outputs(
@@ -659,8 +681,9 @@ class HospitalGTMWorkflow:
             Full workflow result and output paths.
         """
         research_result = self.research(hospital_id, sources)
+        initial_version, revised_version = self._next_demo_versions(hospital_id)
         initial = self.generate_strategy(
-            hospital_id, "strategy_v1", research_result.record_ids()
+            hospital_id, initial_version, research_result.record_ids()
         )
         approval = self.approve_strategy(initial.strategy)
         if not approval.check.approved:
@@ -673,7 +696,7 @@ class HospitalGTMWorkflow:
             self.band,
             self.author_agent,
         )
-        revised = fresh_session.generate_strategy(hospital_id, "strategy_v2")
+        revised = fresh_session.generate_strategy(hospital_id, revised_version)
         learning = fresh_session.build_learning_summary(
             initial.strategy, revised.strategy
         )
@@ -688,6 +711,33 @@ class HospitalGTMWorkflow:
             learning,
             paths,
         )
+
+    def _next_demo_versions(self, hospital_id: str) -> tuple[str, str]:
+        """Allocate two strategy versions that do not reuse prior runs.
+
+        Args:
+            hospital_id: Hospital namespace for the demo.
+
+        Returns:
+            Initial and revised strategy version identifiers.
+        """
+        recalled = self.memory.recall(
+            hospital_id,
+            "kind strategy strategy_version",
+            limit=100,
+        )
+        versions: list[int] = []
+        for match in recalled.matches:
+            record = match.record
+            if record.kind is not RecordKind.STRATEGY or not record.strategy_version:
+                continue
+            prefix = "strategy_v"
+            if record.strategy_version.startswith(prefix):
+                suffix = record.strategy_version[len(prefix) :]
+                if suffix.isdigit():
+                    versions.append(int(suffix))
+        next_version = max(versions, default=0) + 1
+        return f"strategy_v{next_version}", f"strategy_v{next_version + 1}"
 
     def _remember_ready(self, record: MemoryRecord) -> RememberResult:
         """Persist a record and require ready indexing.

@@ -222,7 +222,13 @@ def stable_record_id(
         Stable lowercase record identifier.
     """
     identity = "|".join(
-        (hospital_id, source.source_url or "", source.source_file or "", source.text)
+        (
+            hospital_id,
+            source.source_url or "",
+            source.source_file or "",
+            source.accessed_at,
+            source.text,
+        )
     )
     digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:20]
     return f"{prefix}_{digest}"
