@@ -8,7 +8,9 @@ version = "0.1.0"
 description = "Shared coordination and memory tooling for the hospital GTM agent team."
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "pypdf>=6,<7",
+]
 
 [project.scripts]
 memory-client = "hospital_gtm.cli:main"

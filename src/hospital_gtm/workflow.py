@@ -232,6 +232,7 @@ class LearningSummary:
     prior_recommendation: str
     revised_recommendation: str
     feedback_record_ids: tuple[str, ...]
+    feedback_evidence_statuses: tuple[EvidenceStatus, ...]
     retrieved_record_ids: tuple[str, ...]
     change_explanation: str
 
@@ -248,6 +249,9 @@ class LearningSummary:
             "prior_recommendation": self.prior_recommendation,
             "revised_recommendation": self.revised_recommendation,
             "feedback_record_ids": list(self.feedback_record_ids),
+            "feedback_evidence_statuses": [
+                status.value for status in self.feedback_evidence_statuses
+            ],
             "retrieved_record_ids": list(self.retrieved_record_ids),
             "change_explanation": self.change_explanation,
         }
@@ -538,6 +542,16 @@ class HospitalGTMWorkflow:
         check = validate_strategy_approval(proposal, approval.decision)
         if not check.approved:
             raise WorkflowError(check.reason)
+        current_strategies = self.memory.list_records(
+            strategy.hospital_id, RecordKind.STRATEGY
+        )
+        if not current_strategies or current_strategies[-1].strategy_version != (
+            strategy.strategy_version
+        ):
+            raise WorkflowError(
+                "cannot draft outreach for a stale strategy; approval is required "
+                "for the current strategy version"
+            )
         sourced_records = tuple(
             self.memory.get_record(record_id)
             for record_id in strategy.source_record_ids
@@ -587,6 +601,10 @@ class HospitalGTMWorkflow:
             raise WorkflowError("learning strategies must use one hospital")
         if not revised.feedback_record_ids:
             raise WorkflowError("learning summary requires feedback records")
+        feedback_records = tuple(
+            self.memory.get_record(record_id)
+            for record_id in revised.feedback_record_ids
+        )
         if prior.recommendation == revised.recommendation:
             change_explanation = (
                 "Fresh-session recall retrieved feedback, but the "
@@ -606,6 +624,9 @@ class HospitalGTMWorkflow:
             prior_recommendation=prior.recommendation,
             revised_recommendation=revised.recommendation,
             feedback_record_ids=revised.feedback_record_ids,
+            feedback_evidence_statuses=tuple(
+                record.evidence_status for record in feedback_records
+            ),
             retrieved_record_ids=revised.source_record_ids,
             change_explanation=change_explanation,
         )
@@ -934,7 +955,14 @@ def _render_learning(summary: LearningSummary) -> str:
         "Retrieved records:\n"
         + "\n".join(f"- `{record_id}`" for record_id in summary.retrieved_record_ids)
         + "\n\nFeedback records:\n"
-        + "\n".join(f"- `{record_id}`" for record_id in summary.feedback_record_ids)
+        + "\n".join(
+            f"- `{record_id}` ({status.value})"
+            for record_id, status in zip(
+                summary.feedback_record_ids,
+                summary.feedback_evidence_statuses,
+                strict=True,
+            )
+        )
         + "\n"
     )
 
