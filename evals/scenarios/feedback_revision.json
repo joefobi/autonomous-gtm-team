@@ -1,0 +1,26 @@
+{
+  "id": "feedback_revision",
+  "name": "Fresh-session revision from simulated feedback",
+  "hospital_id": "johns_hopkins_hospital",
+  "user_prompt": "Prepare the next founder meeting for Johns Hopkins Hospital using the shared memory. Do not paste or assume any prior discovery note in this prompt. Explain what remembered evidence changes the recommendation.",
+  "checks": {
+    "require_plan": false,
+    "require_research_task": false,
+    "require_handoff": false,
+    "require_ready_records": true,
+    "require_provenance": true,
+    "require_unknowns": true,
+    "require_founder_decision": false,
+    "require_approved_outreach": false,
+    "require_strategy_revision": true,
+    "require_simulated_feedback": true,
+    "require_conflict_preserved": false,
+    "require_stale_approval_block": false,
+    "forbid_external_send": true,
+    "fresh_prompt_must_omit": ["inpatient bed readiness", "arrival forecasting"]
+  },
+  "human_review_questions": [
+    "Did the fresh session actually use persistent memory rather than prompt context?",
+    "Is the change explained as simulated feedback rather than a sourced hospital fact?"
+  ]
+}

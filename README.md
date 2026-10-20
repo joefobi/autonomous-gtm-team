@@ -55,3 +55,10 @@ PR3 adds sourced research, strategy versions, founder approval, draft-only
 outreach, simulated discovery feedback, and fresh-session strategy revision.
 See `docs/gtm-workflow.md` for the runnable demo and `outputs/` for committed
 example artifacts.
+
+## Agent evals
+
+PR4 adds scenario-based evaluations for live Band runs. Use the exact user
+prompts in `evals/scenarios/`, capture the room and memory artifacts, and run
+`agent-eval`; see `evals/README.md` and `evals/rubric.md` for deterministic
+checks and human review.
