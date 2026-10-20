@@ -47,7 +47,7 @@ def make_record(
         evidence_status=EvidenceStatus.SOURCED,
         author_agent="researcher",
         idempotency_key=f"test:{record_id}",
-        source_file="tests/fixture.md",
+        source_file="tests/source.md",
         source_title="Test source",
     )
 
@@ -169,6 +169,8 @@ class MemoryHTTPTests(unittest.TestCase):
             self.assertEqual(result.indexing_state, IndexingState.READY)
             record = client.get_record("report?draft")
             self.assertEqual(record.record_id, "report?draft")
+            listed = client.list_records("demo", RecordKind.PUBLIC_EVIDENCE)
+            self.assertEqual([item.record_id for item in listed], ["report?draft"])
             recalled = client.recall("demo", "patient flow")
             self.assertEqual(recalled.matches[0].record.record_id, "report?draft")
             with urlopen(f"http://{host}:{port}/health", timeout=5) as response:

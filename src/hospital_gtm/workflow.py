@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Protocol
 
 from hospital_gtm.band import BandClient
+from hospital_gtm.client import MemoryClient
 from hospital_gtm.coordination import (
     ApprovalCheck,
     BandCoordinator,
@@ -56,6 +57,14 @@ class MemoryGateway(Protocol):
 
     def record_decision(self, decision: DecisionRequest) -> object:
         """Persist one founder decision."""
+        ...
+
+    def list_records(
+        self,
+        hospital_id: str,
+        kind: RecordKind | None = None,
+    ) -> tuple[MemoryRecord, ...]:
+        """List ready canonical records for a hospital."""
         ...
 
 
@@ -321,25 +330,32 @@ class HospitalGTMWorkflow:
         hospital_id: str,
         source: str | Path,
         author_agent: str = "founder",
+        evidence_status: EvidenceStatus = EvidenceStatus.FOUNDER_CONFIRMED,
     ) -> MemoryRecord:
-        """Store explicitly simulated discovery feedback.
+        """Store discovery feedback with its evidence status.
 
         Args:
             hospital_id: Hospital namespace for the feedback.
-            source: Local feedback fixture or source file.
+            source: Feedback source file or public URL.
             author_agent: Agent recording the feedback.
+            evidence_status: Provenance status for the feedback.
 
         Returns:
-            Stored simulated feedback record.
+            Stored discovery feedback record.
         """
         document = load_source(source)
         record_id = stable_record_id(hospital_id, document, "feedback")
+        label = (
+            "SIMULATED DISCOVERY FEEDBACK"
+            if evidence_status is EvidenceStatus.SIMULATED
+            else "DISCOVERY FEEDBACK"
+        )
         record = MemoryRecord(
             record_id=record_id,
             hospital_id=hospital_id,
             kind=RecordKind.DISCOVERY_FEEDBACK,
-            content=f"SIMULATED DISCOVERY FEEDBACK: {document.text}",
-            evidence_status=EvidenceStatus.SIMULATED,
+            content=f"{label}: {document.text}",
+            evidence_status=evidence_status,
             author_agent=author_agent,
             idempotency_key=f"feedback:{record_id}",
             source_url=document.source_url,
@@ -366,26 +382,11 @@ class HospitalGTMWorkflow:
         Returns:
             Stored strategy and indexing response.
         """
-        recalled = self.memory.recall(
-            hospital_id,
-            "kind public_evidence hospital emergency patient flow arrival demand "
-            "inpatient bed readiness discharge",
-            limit=100,
-        )
-        feedback_recalled = self.memory.recall(
-            hospital_id,
-            "kind discovery_feedback simulated customer feedback",
-            limit=100,
-        )
         records_by_id = {
-            match.record.record_id: match.record for match in recalled.matches
+            record.record_id: record
+            for kind in (RecordKind.PUBLIC_EVIDENCE, RecordKind.DISCOVERY_FEEDBACK)
+            for record in self._recall_records_by_kind(hospital_id, kind)
         }
-        records_by_id.update(
-            {
-                match.record.record_id: match.record
-                for match in feedback_recalled.matches
-            }
-        )
         for record_id in research_record_ids:
             record = self.memory.get_record(record_id)
             if record.hospital_id != hospital_id:
@@ -408,7 +409,7 @@ class HospitalGTMWorkflow:
                 "coordination before evaluating ED arrival forecasting."
             )
             rationale = (
-                "Simulated discovery feedback changed the priority toward inpatient "
+                "Discovery feedback changed the priority toward inpatient "
                 "readiness; public evidence still does not establish buyer intent, "
                 "available data, or pilot value."
             )
@@ -583,13 +584,13 @@ class HospitalGTMWorkflow:
             raise WorkflowError("learning summary requires feedback records")
         if prior.recommendation == revised.recommendation:
             change_explanation = (
-                "Fresh-session recall retrieved simulated feedback, but the "
+                "Fresh-session recall retrieved feedback, but the "
                 "recommendation did not change: "
                 f"{revised.recommendation}"
             )
         else:
             change_explanation = (
-                "Fresh-session recall retrieved simulated feedback and changed "
+                "Fresh-session recall retrieved feedback and changed "
                 "the recommendation from "
                 f"{prior.recommendation} to {revised.recommendation}"
             )
@@ -669,13 +670,15 @@ class HospitalGTMWorkflow:
         hospital_id: str,
         sources: Sequence[str | Path],
         feedback_source: str | Path,
+        feedback_status: EvidenceStatus = EvidenceStatus.FOUNDER_CONFIRMED,
     ) -> DemoResult:
         """Run research, approval, outreach, feedback, and fresh recall.
 
         Args:
             hospital_id: Hospital namespace for the demo.
             sources: Supplied public research sources.
-            feedback_source: Explicitly simulated discovery feedback fixture.
+            feedback_source: Discovery feedback source file or public URL.
+            feedback_status: Provenance status for the feedback source.
 
         Returns:
             Full workflow result and output paths.
@@ -689,7 +692,9 @@ class HospitalGTMWorkflow:
         if not approval.check.approved:
             raise WorkflowError("demo requires explicit founder approval")
         outreach = self.draft_outreach(initial.strategy, approval)
-        feedback = self.store_feedback(hospital_id, feedback_source)
+        feedback = self.store_feedback(
+            hospital_id, feedback_source, evidence_status=feedback_status
+        )
         fresh_session = HospitalGTMWorkflow(
             self.memory,
             self.output_dir,
@@ -721,14 +726,9 @@ class HospitalGTMWorkflow:
         Returns:
             Initial and revised strategy version identifiers.
         """
-        recalled = self.memory.recall(
-            hospital_id,
-            "kind strategy strategy_version",
-            limit=100,
-        )
+        recalled = self.memory.list_records(hospital_id, RecordKind.STRATEGY)
         versions: list[int] = []
-        for match in recalled.matches:
-            record = match.record
+        for record in recalled:
             if record.kind is not RecordKind.STRATEGY or not record.strategy_version:
                 continue
             prefix = "strategy_v"
@@ -738,6 +738,35 @@ class HospitalGTMWorkflow:
                     versions.append(int(suffix))
         next_version = max(versions, default=0) + 1
         return f"strategy_v{next_version}", f"strategy_v{next_version + 1}"
+
+    def _recall_records_by_kind(
+        self,
+        hospital_id: str,
+        kind: RecordKind,
+    ) -> tuple[MemoryRecord, ...]:
+        """Recall relevant records and complete the set from canonical storage.
+
+        Args:
+            hospital_id: Hospital namespace for the records.
+            kind: Record kind to retrieve.
+
+        Returns:
+            All ready records of the requested kind.
+        """
+        canonical = self.memory.list_records(hospital_id, kind)
+        recalled = self.memory.recall(
+            hospital_id,
+            f"kind {kind.value} hospital patient flow emergency bed discharge",
+            limit=100,
+        )
+        ordered: list[MemoryRecord] = []
+        seen: set[str] = set()
+        for match in recalled.matches:
+            if match.record.kind is kind:
+                ordered.append(match.record)
+                seen.add(match.record.record_id)
+        ordered.extend(record for record in canonical if record.record_id not in seen)
+        return tuple(ordered)
 
     def _remember_ready(self, record: MemoryRecord) -> RememberResult:
         """Persist a record and require ready indexing.
@@ -913,7 +942,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--hospital-id", required=True)
     parser.add_argument("--source", action="append", required=True)
     parser.add_argument("--feedback", required=True)
+    parser.add_argument(
+        "--feedback-status",
+        choices=tuple(status.value for status in EvidenceStatus),
+        default=EvidenceStatus.FOUNDER_CONFIRMED.value,
+        help="Evidence status for the feedback source.",
+    )
     parser.add_argument("--db", default="data/memory.sqlite3")
+    parser.add_argument(
+        "--memory-url",
+        help="Use an already-running memory service instead of local in-process memory.",
+    )
     parser.add_argument("--outputs", default="outputs")
     parser.add_argument("--room-id", required=True)
     parser.add_argument("--strategist", required=True)
@@ -922,7 +961,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     from hospital_gtm.service import MemoryService
     from hospital_gtm.store import SQLiteRecordStore
 
-    memory = MemoryService(SQLiteRecordStore(args.db))
+    memory: MemoryGateway
+    if args.memory_url:
+        memory = MemoryClient(args.memory_url)
+    else:
+        memory = MemoryService(SQLiteRecordStore(args.db))
     band = BandCoordinator(
         BandClient(cwd=Path.cwd()),
         args.room_id,
@@ -933,6 +976,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         args.hospital_id,
         args.source,
         args.feedback,
+        EvidenceStatus(args.feedback_status),
     )
     print(
         json.dumps(

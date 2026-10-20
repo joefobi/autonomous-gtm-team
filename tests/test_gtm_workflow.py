@@ -15,9 +15,41 @@ from hospital_gtm.service import MemoryService
 from hospital_gtm.store import SQLiteRecordStore
 from hospital_gtm.workflow import HospitalGTMWorkflow
 
-ROOT = Path(__file__).resolve().parents[1]
-SOURCE = ROOT / "fixtures/johns_hopkins_hospital/public_evidence.json"
-FEEDBACK = ROOT / "fixtures/johns_hopkins_hospital/discovery_feedback.json"
+
+def _write_source(
+    root: Path,
+    filename: str,
+    title: str,
+    content: str,
+    source_url: str | None = None,
+    observed_at: str = "2026-10-20",
+) -> Path:
+    """Write a temporary source document for a test.
+
+    Args:
+        root: Temporary test directory.
+        filename: Source filename.
+        title: Source title.
+        content: Source content.
+        source_url: Optional source URL.
+        observed_at: Source observation date.
+
+    Returns:
+        Temporary source path.
+    """
+    path = root / filename
+    path.write_text(
+        json.dumps(
+            {
+                "source_title": title,
+                "source_url": source_url,
+                "observed_at": observed_at,
+                "content": content,
+            }
+        ),
+        encoding="utf-8",
+    )
+    return path
 
 
 class ApprovalRunner:
@@ -54,6 +86,22 @@ class GTMWorkflowTests(unittest.TestCase):
         """Run research, approval, outreach, feedback, recall, and outputs."""
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
+            source = _write_source(
+                root,
+                "public_evidence.json",
+                "The Johns Hopkins Hospital | Johns Hopkins Medicine",
+                "The Johns Hopkins Medicine location page identifies The Johns "
+                "Hopkins Hospital and lists emergency care among its services.",
+                "https://www.hopkinsmedicine.org/patient-care/locations/the-johns-hopkins-hospital",
+            )
+            feedback = _write_source(
+                root,
+                "discovery_feedback.json",
+                "Discovery feedback",
+                "An operations leader wants the next conversation to focus on "
+                "inpatient bed readiness and discharge coordination before ED "
+                "arrival forecasting.",
+            )
             memory = MemoryService(SQLiteRecordStore(root / "memory.sqlite3"))
             runner = ApprovalRunner()
             band = BandCoordinator(
@@ -66,8 +114,9 @@ class GTMWorkflowTests(unittest.TestCase):
 
             result = workflow.run_demo(
                 "johns_hopkins_hospital",
-                (SOURCE,),
-                FEEDBACK,
+                (source,),
+                feedback,
+                EvidenceStatus.SIMULATED,
             )
 
             self.assertEqual(result.approval.check.approved, True)
@@ -112,6 +161,19 @@ class GTMWorkflowTests(unittest.TestCase):
         """Allow the same persistent database to run the demo twice."""
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
+            source = _write_source(
+                root,
+                "public_evidence.json",
+                "The Johns Hopkins Hospital | Johns Hopkins Medicine",
+                "The Johns Hopkins Medicine location page identifies emergency care.",
+                "https://www.hopkinsmedicine.org/patient-care/locations/the-johns-hopkins-hospital",
+            )
+            feedback = _write_source(
+                root,
+                "discovery_feedback.json",
+                "Discovery feedback",
+                "Focus on inpatient bed readiness and discharge coordination.",
+            )
             memory = MemoryService(SQLiteRecordStore(root / "memory.sqlite3"))
             runner = ApprovalRunner()
             band = BandCoordinator(
@@ -122,8 +184,18 @@ class GTMWorkflowTests(unittest.TestCase):
             )
             workflow = HospitalGTMWorkflow(memory, root / "outputs", band)
 
-            first = workflow.run_demo("johns_hopkins_hospital", (SOURCE,), FEEDBACK)
-            second = workflow.run_demo("johns_hopkins_hospital", (SOURCE,), FEEDBACK)
+            first = workflow.run_demo(
+                "johns_hopkins_hospital",
+                (source,),
+                feedback,
+                EvidenceStatus.SIMULATED,
+            )
+            second = workflow.run_demo(
+                "johns_hopkins_hospital",
+                (source,),
+                feedback,
+                EvidenceStatus.SIMULATED,
+            )
 
             self.assertEqual(
                 first.initial_strategy.strategy.strategy_version, "strategy_v1"
@@ -142,10 +214,16 @@ class GTMWorkflowTests(unittest.TestCase):
         """Recall feedback separately instead of losing it to a result limit."""
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
+            feedback_source = _write_source(
+                root,
+                "discovery_feedback.json",
+                "Discovery feedback",
+                "Focus on inpatient bed readiness and discharge coordination.",
+            )
             memory = MemoryService(SQLiteRecordStore(root / "memory.sqlite3"))
             workflow = HospitalGTMWorkflow(memory)
             sources = []
-            for index in range(25):
+            for index in range(125):
                 source = root / f"source_{index}.txt"
                 source.write_text(
                     "Public hospital evidence describes emergency patient flow.",
@@ -154,12 +232,69 @@ class GTMWorkflowTests(unittest.TestCase):
                 sources.append(source)
 
             workflow.research("johns_hopkins_hospital", tuple(sources))
-            feedback = workflow.store_feedback("johns_hopkins_hospital", FEEDBACK)
+            feedback = workflow.store_feedback(
+                "johns_hopkins_hospital", feedback_source
+            )
             strategy = workflow.generate_strategy(
                 "johns_hopkins_hospital", "strategy_v1"
             )
 
+            self.assertEqual(len(strategy.strategy.feedback_record_ids), 1)
             self.assertIn(feedback.record_id, strategy.strategy.feedback_record_ids)
+
+    def test_canonical_feedback_listing_is_not_capped_at_recall_limit(self) -> None:
+        """Include all feedback records when semantic recall has a result cap."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            memory = MemoryService(SQLiteRecordStore(root / "memory.sqlite3"))
+            workflow = HospitalGTMWorkflow(memory)
+            source = _write_source(
+                root,
+                "public_evidence.json",
+                "Hospital evidence",
+                "Public evidence describes emergency patient flow.",
+                "https://example.org/hospital",
+            )
+            workflow.research("hospital", (source,))
+            feedback_sources = [
+                _write_source(
+                    root,
+                    f"feedback_{index}.json",
+                    "Discovery feedback",
+                    f"Actual discovery note {index}.",
+                )
+                for index in range(125)
+            ]
+            for feedback_source in feedback_sources:
+                workflow.store_feedback("hospital", feedback_source)
+
+            strategy = workflow.generate_strategy("hospital", "strategy_v1")
+
+            self.assertEqual(len(strategy.strategy.feedback_record_ids), 125)
+
+    def test_strategy_version_listing_is_not_capped_at_recall_limit(self) -> None:
+        """Allocate versions after more than one hundred existing strategies."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            memory = MemoryService(SQLiteRecordStore(root / "memory.sqlite3"))
+            workflow = HospitalGTMWorkflow(memory)
+            source = _write_source(
+                root,
+                "public_evidence.json",
+                "Hospital evidence",
+                "Public evidence describes emergency patient flow.",
+                "https://example.org/hospital",
+            )
+            research = workflow.research("hospital", (source,))
+            for version in range(1, 102):
+                workflow.generate_strategy(
+                    "hospital", f"strategy_v{version}", research.record_ids()
+                )
+
+            self.assertEqual(
+                workflow._next_demo_versions("hospital"),
+                ("strategy_v102", "strategy_v103"),
+            )
 
     def test_learning_summary_reports_when_feedback_does_not_change_strategy(
         self,
@@ -167,9 +302,16 @@ class GTMWorkflowTests(unittest.TestCase):
         """Report unchanged recommendations without claiming a false shift."""
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
+            source = _write_source(
+                root,
+                "public_evidence.json",
+                "The Johns Hopkins Hospital | Johns Hopkins Medicine",
+                "The Johns Hopkins Medicine location page identifies emergency care.",
+                "https://www.hopkinsmedicine.org/patient-care/locations/the-johns-hopkins-hospital",
+            )
             memory = MemoryService(SQLiteRecordStore(root / "memory.sqlite3"))
             workflow = HospitalGTMWorkflow(memory)
-            research = workflow.research("johns_hopkins_hospital", (SOURCE,))
+            research = workflow.research("johns_hopkins_hospital", (source,))
             prior = workflow.generate_strategy(
                 "johns_hopkins_hospital", "strategy_v1", research.record_ids()
             )
@@ -217,10 +359,17 @@ class GTMWorkflowTests(unittest.TestCase):
                 SQLiteRecordStore(Path(directory) / "memory.sqlite3")
             )
             workflow = HospitalGTMWorkflow(memory)
+            source = _write_source(
+                Path(directory),
+                "public_evidence.json",
+                "The Johns Hopkins Hospital | Johns Hopkins Medicine",
+                "The Johns Hopkins Medicine location page identifies emergency care.",
+                "https://www.hopkinsmedicine.org/patient-care/locations/the-johns-hopkins-hospital",
+            )
             with self.assertRaisesRegex(RuntimeError, "at least one"):
                 workflow.research("johns_hopkins_hospital", ())
 
-            result = workflow.research("johns_hopkins_hospital", (SOURCE,))
+            result = workflow.research("johns_hopkins_hospital", (source,))
             record = result.records[0]
             self.assertEqual(record.evidence_status, EvidenceStatus.SOURCED)
             self.assertIn("Excerpt:", record.content)
@@ -228,7 +377,7 @@ class GTMWorkflowTests(unittest.TestCase):
                 record.source_url,
                 "https://www.hopkinsmedicine.org/patient-care/locations/the-johns-hopkins-hospital",
             )
-            self.assertEqual(record.source_file, str(SOURCE))
+            self.assertEqual(record.source_file, str(source))
             self.assertEqual(
                 record.source_title,
                 "The Johns Hopkins Hospital | Johns Hopkins Medicine",

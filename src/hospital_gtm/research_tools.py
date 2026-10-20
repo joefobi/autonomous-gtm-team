@@ -235,10 +235,10 @@ def stable_record_id(
 
 
 def _load_json_source(path: Path, raw_text: str) -> SourceDocument:
-    """Decode a JSON source fixture.
+    """Decode a JSON source document.
 
     Args:
-        path: JSON fixture path.
+        path: JSON source path.
         raw_text: File contents.
 
     Returns:

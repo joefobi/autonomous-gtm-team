@@ -228,6 +228,33 @@ class SQLiteRecordStore:
             raise RecordNotFound(f"record not found: {record_id}")
         return self._row_to_record(row)
 
+    def list_records(
+        self,
+        hospital_id: str,
+        kind: RecordKind | None = None,
+    ) -> tuple[MemoryRecord, ...]:
+        """Return all ready records for a hospital and optional kind.
+
+        Args:
+            hospital_id: Hospital namespace for the records.
+            kind: Optional record kind filter.
+
+        Returns:
+            Canonical records ordered by creation time.
+        """
+        query = """
+            SELECT * FROM records
+            WHERE hospital_id = ? AND indexing_state = ?
+        """
+        parameters: list[str] = [hospital_id, IndexingState.READY.value]
+        if kind is not None:
+            query += " AND kind = ?"
+            parameters.append(kind.value)
+        query += " ORDER BY created_at ASC, record_id ASC"
+        with self._connection() as connection:
+            rows = connection.execute(query, parameters).fetchall()
+        return tuple(self._row_to_record(row) for row in rows)
+
     def set_indexing_state(
         self,
         record_id: str,
