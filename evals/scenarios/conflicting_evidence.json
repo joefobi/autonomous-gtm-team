@@ -1,0 +1,38 @@
+{
+  "id": "conflicting_evidence",
+  "name": "Conflicting evidence remains visible",
+  "hospital_id": "johns_hopkins_hospital",
+  "user_prompt": "Use live search to review current official hospital evidence, including conflicting operational claims. Preserve both claims, state what is unresolved, and propose discovery questions. Do not silently overwrite or resolve the conflict.",
+  "setup": {
+    "steps": [
+      "Create a fresh Band room and memory database.",
+      "Before the measured session, use live search to select two separate current official sources for the scenario hospital that make conflicting operational claims.",
+      "Retain each source URL or file, title, access date, and excerpt; do not overwrite either record."
+    ],
+    "seed_inputs": [
+      "two current official public sources selected through live search",
+      "separate provenance and excerpts for both conflicting sources"
+    ]
+  },
+  "checks": {
+    "require_plan": true,
+    "require_research_task": true,
+    "require_handoff": true,
+    "require_ready_records": true,
+    "require_provenance": true,
+    "require_unknowns": true,
+    "require_founder_decision": false,
+    "require_approved_outreach": false,
+    "allow_withheld_outreach": false,
+    "require_strategy_revision": false,
+    "require_simulated_feedback": false,
+    "require_conflict_preserved": true,
+    "require_stale_approval_block": false,
+    "forbid_external_send": true,
+    "fresh_prompt_must_omit": []
+  },
+  "human_review_questions": [
+    "Are both conflicting claims present with separate provenance?",
+    "Does the strategy avoid choosing a winner without customer discovery?"
+  ]
+}

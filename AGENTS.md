@@ -35,13 +35,15 @@ Use the actual handles configured in Band. The names below are logical roles, no
 - Explain what retrieved information changed the recommendation.
 
 ### Researcher
-- Read supplied sources or use configured search and fetch tools.
+- Use the native web-search tools available in Band/Codex and then fetch selected pages; never require the founder to supply a URL list.
+- For the `customer` track, search annual reports, strategic plans, board packets, quality reports, ED or inpatient operations pages, and public RFPs.
+- For the `data_collaboration` track, search annual reports, research institute pages, clinical-informatics or interoperability announcements, data-governance pages, and public partnership announcements.
 - Retain URL or filename, title, access date, and supporting excerpt.
 - Research documented patient flow priorities and possible stakeholder roles.
 - Mark unsupported details as unknown.
 - Store useful findings and their provenance in Cognee through the shared memory service.
 - Complete the board task only after the memory write succeeds.
-- Mention the strategist with findings, limitations, and memory record IDs.
+- Mention the strategist with the selected track, search queries, findings, limitations, and memory record IDs.
 
 ### Outreach writer
 - Retrieve hospital history and the approved strategy from memory.
@@ -89,9 +91,8 @@ Planned layout
 - DESIGN.md holds architecture and scope.
 - src/memory_service.py exposes shared memory operations.
 - src/models.py defines validated records and workflow outputs.
-- src/research_tools.py handles optional search and fetch.
+- src/research_tools.py handles fetching and provenance-preserving extraction after native agent search.
 - prompts/ holds role-specific instructions copied into Band agent settings.
-- fixtures/ holds fictional hospital input and simulated discovery feedback.
 - outputs/ holds generated briefs and drafts.
 
 Agents may not automatically load this file in every harness. Configure each Band agent to read it, then apply only its assigned role. Use one implementer for shared code files and separate output directories to avoid concurrent edits.
@@ -105,7 +106,7 @@ Agents may not automatically load this file in every harness. Configure each Ban
 - Persist Cognee storage. Never run destructive cleanup during the restart demo.
 - Bound retries and return actionable errors.
 - If retrieval finds no relevant evidence, report that rather than fabricate a memory.
-- Network research failures may use preloaded public sources with provenance. Disclose that mode.
+- Network research failures block the live-search demo; do not silently substitute a preloaded source pack.
 - Capture runtime versions and lock dependencies after the integration works.
 
 ## Completion criteria

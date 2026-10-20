@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
 from hospital_gtm.models import (
@@ -14,6 +14,7 @@ from hospital_gtm.models import (
     MemoryRecord,
     RecallMatch,
     RecallResult,
+    RecordKind,
     RememberResult,
 )
 
@@ -63,6 +64,34 @@ class MemoryClient:
         """
         payload = self._request("GET", f"/memories/{quote(record_id, safe='')}")
         return MemoryRecord.from_mapping(payload)
+
+    def list_records(
+        self,
+        hospital_id: str,
+        kind: RecordKind | None = None,
+    ) -> tuple[MemoryRecord, ...]:
+        """List ready canonical records for a hospital.
+
+        Args:
+            hospital_id: Hospital namespace for the records.
+            kind: Optional record kind filter.
+
+        Returns:
+            Canonical records ordered by creation time.
+        """
+        query = {"hospital_id": hospital_id}
+        if kind is not None:
+            query["kind"] = kind.value
+        payload = self._request("GET", f"/memories?{urlencode(query)}")
+        raw_records = payload.get("records")
+        if not isinstance(raw_records, list):
+            raise MemoryClientError("list response has invalid records")
+        records: list[MemoryRecord] = []
+        for raw_record in raw_records:
+            if not isinstance(raw_record, dict):
+                raise MemoryClientError("list response has an invalid record")
+            records.append(MemoryRecord.from_mapping(raw_record))
+        return tuple(records)
 
     def recall(self, hospital_id: str, query: str, limit: int = 20) -> RecallResult:
         """Recall records for a hospital.

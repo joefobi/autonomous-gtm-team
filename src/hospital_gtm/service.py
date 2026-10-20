@@ -8,7 +8,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, cast
-from urllib.parse import unquote, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
 from hospital_gtm.index import KeywordIndex, MemoryIndex
 from hospital_gtm.models import (
@@ -128,6 +128,24 @@ class MemoryService:
             The canonical record.
         """
         return self.store.get(record_id)
+
+    def list_records(
+        self,
+        hospital_id: str,
+        kind: RecordKind | None = None,
+    ) -> tuple[MemoryRecord, ...]:
+        """List ready canonical records for a hospital.
+
+        Args:
+            hospital_id: Hospital namespace for the records.
+            kind: Optional record kind filter.
+
+        Returns:
+            Canonical records ordered by creation time.
+        """
+        if not hospital_id.strip():
+            raise ModelValidationError("hospital_id must be a non-empty string")
+        return self.store.list_records(hospital_id.strip(), kind)
 
     def recall(self, hospital_id: str, query: str, limit: int = 20) -> RecallResult:
         """Recall indexed records for a hospital.
@@ -261,10 +279,22 @@ def _handler_for(service: MemoryService) -> type[BaseHTTPRequestHandler]:
 
         def do_GET(self) -> None:
             """Handle health and record GET requests."""
-            path = urlsplit(self.path).path
+            parsed_path = urlsplit(self.path)
+            path = parsed_path.path
             try:
                 if path == "/health":
                     self._send_json(200, service.health())
+                    return
+                if path == "/memories":
+                    query = parse_qs(parsed_path.query)
+                    hospital_id = _query_value(query, "hospital_id")
+                    kind_value = _optional_query_value(query, "kind")
+                    kind = RecordKind(kind_value) if kind_value else None
+                    records = service.list_records(hospital_id, kind)
+                    self._send_json(
+                        200,
+                        {"records": [record.to_mapping() for record in records]},
+                    )
                     return
                 prefix = "/memories/"
                 if path.startswith(prefix) and path != prefix:
@@ -410,3 +440,40 @@ def _recall_payload(payload: Mapping[str, object]) -> tuple[str, str, int]:
     if not isinstance(limit, int):
         raise ModelValidationError("limit must be an integer")
     return hospital_id, query, limit
+
+
+def _query_value(query: Mapping[str, list[str]], field_name: str) -> str:
+    """Read one required query-string value.
+
+    Args:
+        query: Parsed query-string fields.
+        field_name: Field to read.
+
+    Returns:
+        Non-empty query value.
+    """
+    values = query.get(field_name)
+    if not values or not values[0].strip():
+        raise ModelValidationError(f"{field_name} query parameter is required")
+    return values[0]
+
+
+def _optional_query_value(
+    query: Mapping[str, list[str]],
+    field_name: str,
+) -> str | None:
+    """Read one optional query-string value.
+
+    Args:
+        query: Parsed query-string fields.
+        field_name: Field to read.
+
+    Returns:
+        Query value or `None` when absent.
+    """
+    values = query.get(field_name)
+    if not values:
+        return None
+    if not values[0].strip():
+        raise ModelValidationError(f"{field_name} query parameter must not be empty")
+    return values[0]

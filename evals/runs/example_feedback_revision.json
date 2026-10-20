@@ -1,0 +1,60 @@
+{
+  "scenario_id": "feedback_revision",
+  "prompt": "Prepare the next founder meeting for Johns Hopkins Hospital using the shared memory. Do not paste or assume any prior discovery note in this prompt. Explain what remembered evidence changes the recommendation.",
+  "plan_present": false,
+  "tasks": [],
+  "messages": [],
+  "records": [
+    {
+      "record_id": "research_public_001",
+      "hospital_id": "johns_hopkins_hospital",
+      "kind": "public_evidence",
+      "content": "Claim: The hospital page identifies emergency care. Excerpt: The page lists emergency care among services.",
+      "evidence_status": "sourced",
+      "author_agent": "researcher",
+      "idempotency_key": "research:public_001",
+      "source_url": "https://example.test/hospital",
+      "source_file": null,
+      "source_title": "Hospital public page",
+      "observed_at": "2026-10-20",
+      "created_at": "2026-10-20T00:00:00+00:00",
+      "source_record_ids": [],
+      "strategy_version": null,
+      "supersedes_record_id": null,
+      "indexing_state": "ready",
+      "indexing_error": null
+    },
+    {
+      "record_id": "feedback_simulated_001",
+      "hospital_id": "johns_hopkins_hospital",
+      "kind": "discovery_feedback",
+      "content": "SIMULATED DISCOVERY FEEDBACK: Focus on inpatient bed readiness before arrival forecasting.",
+      "evidence_status": "simulated",
+      "author_agent": "founder",
+      "idempotency_key": "feedback:simulated_001",
+      "source_url": null,
+      "source_file": "fixtures/discovery_feedback.json",
+      "source_title": "Simulated discovery note",
+      "observed_at": "2026-10-20",
+      "created_at": "2026-10-20T00:00:00+00:00",
+      "source_record_ids": [],
+      "strategy_version": null,
+      "supersedes_record_id": null,
+      "indexing_state": "ready",
+      "indexing_error": null
+    }
+  ],
+  "outputs": {
+    "initial_strategy": {
+      "recommendation": "Interview ED and inpatient operations leaders before selecting an arrival-forecasting or bed-readiness pilot."
+    },
+    "revised_strategy": {
+      "recommendation": "Prioritize discovery about inpatient bed readiness and discharge coordination before evaluating ED arrival forecasting.",
+      "unknowns": ["Actual bottleneck"],
+      "feedback_record_ids": ["feedback_simulated_001"],
+      "source_record_ids": ["research_public_001"]
+    }
+  },
+  "fresh_session_prompt": "Prepare the next founder meeting for Johns Hopkins Hospital using the shared memory.",
+  "external_sends": []
+}

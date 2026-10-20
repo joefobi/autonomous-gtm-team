@@ -19,7 +19,7 @@ Implement the persistent memory layer independently of Band.
 - [ ] Add `GET /health`.
 - [ ] Add idempotency handling and duplicate-write protection.
 - [ ] Add CLI commands such as `remember`, `recall`, and `get`.
-- [ ] Add one hospital fixture.
+- [ ] Verify one real hospital using public evidence found by the agent's native search.
 - [ ] Test persistence, provenance, hospital filtering, idempotency, and cross-process recall.
 
 ### Acceptance
@@ -55,14 +55,14 @@ Build the domain workflow on top of the memory and Band foundations.
 
 ### Tasks
 
-- [ ] Add `src/research_tools.py` for supplied sources and optional live retrieval.
+- [ ] Use Band/Codex native search, then use `src/research_tools.py` to fetch selected URLs and preserve provenance.
 - [ ] Extract source URL or file, title, access date, and excerpts.
 - [ ] Generate strategy with buyer hypotheses, unknowns, discovery questions, and pilot scope.
 - [ ] Store founder decisions linked to the approved strategy version.
 - [ ] Generate outreach drafts that verify current approval.
 - [ ] Generate a structured opportunity brief and learning summary.
 - [ ] Store generated files under `outputs/`.
-- [ ] Add simulated discovery feedback showing the shift from arrival forecasting to inpatient bed readiness.
+- [ ] Record an explicitly labeled discovery note showing the shift from arrival forecasting to inpatient bed readiness.
 - [ ] Demonstrate fresh-session recall changing the recommendation.
 - [ ] Verify sourced claims and simulated labels.
 - [ ] Verify conflicting evidence remains visible.
@@ -81,5 +81,5 @@ draft, new feedback, persistent recall, and revised recommendation.
 PR 1: memory contracts → PR 2: Band coordination → PR 3: GTM workflow
 ```
 
-Keep optional billing, security scanning, live research, and UI work out of
+Keep optional billing, security scanning, and UI work out of
 these PRs until the three core workflows are verified.

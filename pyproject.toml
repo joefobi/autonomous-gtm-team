@@ -8,16 +8,23 @@ version = "0.1.0"
 description = "Shared coordination and memory tooling for the hospital GTM agent team."
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "pypdf>=6,<7",
+]
 
 [project.scripts]
 memory-client = "hospital_gtm.cli:main"
+gtm-demo = "hospital_gtm.workflow:main"
+agent-eval = "hospital_gtm.evals:main"
 
 [project.optional-dependencies]
 dev = [
     "black>=24.10,<26",
     "isort>=5.13,<7",
     "mypy>=1.11,<2",
+]
+demo = [
+    "cognee[gliner]>=1.6,<2",
 ]
 
 [tool.setuptools.packages.find]
