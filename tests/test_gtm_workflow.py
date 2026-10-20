@@ -147,6 +147,13 @@ class GTMWorkflowTests(unittest.TestCase):
             self.assertTrue(result.output_paths["opportunity_brief_md"].is_file())
             self.assertTrue(result.output_paths["outreach_draft_json"].is_file())
             self.assertTrue(result.output_paths["learning_summary_md"].is_file())
+            learning = json.loads(
+                result.output_paths["learning_summary_json"].read_text()
+            )
+            self.assertEqual(learning["feedback_evidence_statuses"], ["simulated"])
+            self.assertIn(
+                "(simulated)", result.output_paths["learning_summary_md"].read_text()
+            )
 
             fresh_memory = MemoryService(SQLiteRecordStore(root / "memory.sqlite3"))
             recalled = fresh_memory.recall(
@@ -415,6 +422,36 @@ class GTMWorkflowTests(unittest.TestCase):
             stable_record_id("johns_hopkins_hospital", first, "research"),
             stable_record_id("johns_hopkins_hospital", second, "research"),
         )
+
+    def test_old_approval_cannot_draft_after_new_strategy(self) -> None:
+        """Reject an approved strategy after a newer strategy is stored."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            memory = MemoryService(SQLiteRecordStore(root / "memory.sqlite3"))
+            source = _write_source(
+                root,
+                "public_evidence.json",
+                "Hospital evidence",
+                "Public evidence describes emergency patient flow.",
+                "https://example.org/hospital",
+            )
+            runner = ApprovalRunner()
+            band = BandCoordinator(
+                BandClient(runner=runner),
+                "room-001",
+                "owner/strategist",
+                "owner/researcher",
+            )
+            workflow = HospitalGTMWorkflow(memory, root / "outputs", band)
+            research = workflow.research("hospital", (source,))
+            initial = workflow.generate_strategy(
+                "hospital", "strategy_v1", research.record_ids()
+            )
+            approval = workflow.approve_strategy(initial.strategy)
+            workflow.generate_strategy("hospital", "strategy_v2", research.record_ids())
+
+            with self.assertRaisesRegex(RuntimeError, "stale strategy"):
+                workflow.draft_outreach(initial.strategy, approval)
 
     def test_research_requires_sources_and_preserves_provenance(self) -> None:
         """Require a source and retain its URL, file, title, and excerpt."""

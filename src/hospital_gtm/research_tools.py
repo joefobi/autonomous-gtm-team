@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import hashlib
 import html
+import importlib
 import json
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
+from io import BytesIO
 from pathlib import Path
-from typing import Mapping
+from typing import Any, Mapping
 from urllib.error import URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
@@ -138,7 +140,7 @@ def load_source(source: str | Path) -> SourceDocument:
 
 
 def fetch_source(url: str, timeout: float = 15.0) -> SourceDocument:
-    """Fetch a public HTML source with optional live retrieval.
+    """Fetch and extract a public HTML or PDF source.
 
     Args:
         url: HTTP(S) source URL.
@@ -152,21 +154,26 @@ def fetch_source(url: str, timeout: float = 15.0) -> SourceDocument:
     request = Request(url, headers={"User-Agent": "hospital-gtm-research/0.1"})
     try:
         with urlopen(request, timeout=timeout) as response:
-            raw = response.read().decode("utf-8", errors="replace")
+            raw_bytes = response.read()
+            content_type = response.headers.get_content_type()
     except (OSError, URLError) as exc:
         raise ResearchError(f"could not fetch source URL: {url}") from exc
-    title_match = re.search(
-        r"<title[^>]*>(.*?)</title>", raw, re.IGNORECASE | re.DOTALL
-    )
-    title = html.unescape(title_match.group(1)).strip() if title_match else url
-    body = re.sub(
-        r"<script[^>]*>.*?</script>", " ", raw, flags=re.IGNORECASE | re.DOTALL
-    )
-    body = re.sub(
-        r"<style[^>]*>.*?</style>", " ", body, flags=re.IGNORECASE | re.DOTALL
-    )
-    text = html.unescape(re.sub(r"<[^>]+>", " ", body))
-    text = re.sub(r"\s+", " ", text).strip()
+    if content_type == "application/pdf" or urlparse(url).path.lower().endswith(".pdf"):
+        text, title = _extract_pdf(raw_bytes, url)
+    else:
+        raw = raw_bytes.decode("utf-8", errors="replace")
+        title_match = re.search(
+            r"<title[^>]*>(.*?)</title>", raw, re.IGNORECASE | re.DOTALL
+        )
+        title = html.unescape(title_match.group(1)).strip() if title_match else url
+        body = re.sub(
+            r"<script[^>]*>.*?</script>", " ", raw, flags=re.IGNORECASE | re.DOTALL
+        )
+        body = re.sub(
+            r"<style[^>]*>.*?</style>", " ", body, flags=re.IGNORECASE | re.DOTALL
+        )
+        text = html.unescape(re.sub(r"<[^>]+>", " ", body))
+        text = re.sub(r"\s+", " ", text).strip()
     if not text:
         raise ResearchError(f"source URL returned no readable text: {url}")
     return SourceDocument(
@@ -175,6 +182,27 @@ def fetch_source(url: str, timeout: float = 15.0) -> SourceDocument:
         accessed_at=date.today().isoformat(),
         source_url=url,
     )
+
+
+def _extract_pdf(raw_bytes: bytes, url: str) -> tuple[str, str]:
+    """Extract text and title from a PDF response.
+
+    Args:
+        raw_bytes: PDF response bytes.
+        url: Source URL used as a title fallback.
+
+    Returns:
+        Extracted text and source title.
+    """
+    try:
+        pdf_reader: Any = importlib.import_module("pypdf").PdfReader
+        reader = pdf_reader(BytesIO(raw_bytes))
+        text = "\n".join(page.extract_text() or "" for page in reader.pages).strip()
+    except Exception as exc:
+        raise ResearchError(f"could not extract PDF source: {url}") from exc
+    metadata_title = reader.metadata.title if reader.metadata else None
+    title = metadata_title.strip() if metadata_title else url
+    return text, title
 
 
 def extract_findings(
