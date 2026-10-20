@@ -5,6 +5,9 @@ Build and operate a hackathon prototype that researches a hospital as a potentia
 
 Read DESIGN.md before implementation. This file defines the target behavior. Tools and services described here must be implemented and verified before claiming they work.
 
+## Python style
+All Python functions and methods must have Google-style docstrings. Include `Args`, `Returns`, and `Raises` sections whenever they apply.
+
 ## Product hypothesis
 We are exploring whether predictions of ED demand, staffed bed availability, and discharge timing can help hospital teams plan patient flow. Treat this as a hypothesis to validate. Public evidence of crowding does not establish the cause, buying intent, available data, or product effectiveness.
 
@@ -115,4 +118,3 @@ Agents may not automatically load this file in every harness. Configure each Ban
 - The demo shows Band's required usage and cost views, where supported by the installed release.
 - No external message is sent.
 - Documentation distinguishes working integrations, simulated inputs, and unfinished features.
-
