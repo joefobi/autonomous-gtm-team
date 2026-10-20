@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Sequence
 
 from hospital_gtm.band import BandClient, BandCommandResult, SharedTask
-from hospital_gtm.models import DecisionRequest
+from hospital_gtm.models import DecisionRequest, IndexingState, RememberResult
 
 
 class CoordinationError(ValueError):
@@ -194,6 +194,8 @@ class BandCoordinator:
             "memory, and hand off record IDs and unknowns. Complete only after the "
             "memory write succeeds."
         )
+        existing_tasks = self.band.board(self.room_id, self.strategist_handle)
+        existing_uids = {task.uid for task in existing_tasks}
         self.band.assign_task(
             self.room_id,
             subject,
@@ -202,10 +204,10 @@ class BandCoordinator:
             components=("research", "memory_service", "band_handoff"),
         )
         tasks = self.band.board(self.room_id, self.strategist_handle)
-        matches = tuple(task for task in tasks if task.subject == subject)
-        if not matches:
-            raise CoordinationError("assigned task was not returned by Band board")
-        return matches[-1]
+        assigned_task = find_task(tasks, subject, existing_uids)
+        if assigned_task is None:
+            raise CoordinationError("Band board did not return one newly assigned task")
+        return assigned_task
 
     def start_research(
         self, task: SharedTask
@@ -225,19 +227,32 @@ class BandCoordinator:
         return taken, started
 
     def complete_research(
-        self, task: SharedTask, handoff: HandoffPayload
+        self,
+        task: SharedTask,
+        handoff: HandoffPayload,
+        memory_results: Sequence[RememberResult],
     ) -> tuple[BandCommandResult, BandCommandResult]:
         """Publish evidence and complete a researcher handoff.
 
         Args:
             task: Research task being completed.
             handoff: Evidence payload for the strategist.
+            memory_results: Results from the handoff's memory writes.
 
         Returns:
             Results for the handoff message and task completion.
         """
         if handoff.task_id != task.uid:
             raise CoordinationError("handoff task_id does not match shared task")
+        ready_record_ids = {
+            result.record_id
+            for result in memory_results
+            if result.indexing_state is IndexingState.READY and result.error is None
+        }
+        missing_record_ids = set(handoff.record_ids) - ready_record_ids
+        if missing_record_ids:
+            missing = ", ".join(sorted(missing_record_ids))
+            raise CoordinationError(f"memory records are not ready: {missing}")
         message = self.band.send_message(
             self.room_id,
             handoff.to_message(self.strategist_handle),
@@ -247,13 +262,15 @@ class BandCoordinator:
             f"Completed with memory record IDs: {', '.join(handoff.record_ids)}. "
             f"Open questions: {', '.join(handoff.open_questions) or 'none'}."
         )
-        edited = self.band.edit_task(
-            self.room_id, task.uid, evidence, self.researcher_handle
+        self.band.edit_task(
+            self.room_id,
+            task.uid,
+            f"{task.detail}\n\n{evidence}",
+            self.researcher_handle,
         )
         completed = self.band.set_task_status(
             self.room_id, task.uid, "completed", self.researcher_handle
         )
-        del edited
         return message, completed
 
     def request_founder_decision(
@@ -317,15 +334,24 @@ class BandCoordinator:
         )
 
 
-def find_task(tasks: Sequence[SharedTask], subject: str) -> SharedTask | None:
-    """Find the newest task with a matching subject.
+def find_task(
+    tasks: Sequence[SharedTask],
+    subject: str,
+    excluded_uids: Collection[str] = (),
+) -> SharedTask | None:
+    """Find one new task with a matching subject.
 
     Args:
         tasks: Tasks returned by Band.
         subject: Exact task subject.
+        excluded_uids: Task IDs already present before assignment.
 
     Returns:
-        The newest matching task or `None`.
+        The unique new matching task or `None` when ambiguous.
     """
-    matches = [task for task in tasks if task.subject == subject]
-    return matches[-1] if matches else None
+    matches = [
+        task
+        for task in tasks
+        if task.subject == subject and task.uid not in excluded_uids
+    ]
+    return matches[0] if len(matches) == 1 else None

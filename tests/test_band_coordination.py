@@ -15,7 +15,11 @@ from hospital_gtm.coordination import (
     StrategyProposal,
     validate_strategy_approval,
 )
-from hospital_gtm.models import DecisionRequest
+from hospital_gtm.models import (
+    DecisionRequest,
+    IndexingState,
+    RememberResult,
+)
 
 
 def completed(
@@ -169,7 +173,22 @@ class CoordinationTests(unittest.TestCase):
                 ]
             }
         )
-        runner = FakeRunner(["ok", "ok", board, "ok", "ok", "ok", "ok", "ok"])
+        existing_board = json.dumps(
+            {
+                "tasks": [
+                    {
+                        "uid": "#0",
+                        "subject": "Earlier task",
+                        "detail": "done",
+                        "status": "completed",
+                        "owners": [],
+                    }
+                ]
+            }
+        )
+        runner = FakeRunner(
+            ["ok", existing_board, "ok", board, "ok", "ok", "ok", "ok", "ok"]
+        )
         client = BandClient(runner=runner)
         coordinator = BandCoordinator(
             client, "room", "owner/strategist", "owner/researcher"
@@ -186,11 +205,56 @@ class CoordinationTests(unittest.TestCase):
             expected_next_action="Recall evidence and propose discovery questions.",
             open_questions=("Who owns inpatient readiness?",),
         )
-        coordinator.complete_research(task, handoff)
+        coordinator.complete_research(
+            task,
+            handoff,
+            (
+                RememberResult(
+                    record_id="record_001",
+                    indexing_state=IndexingState.READY,
+                    error=None,
+                    created=True,
+                ),
+            ),
+        )
 
-        self.assertIn("@owner/strategist", runner.commands[5][3])
-        self.assertIn("record_001", runner.commands[5][3])
+        self.assertIn("@owner/strategist", runner.commands[6][3])
+        self.assertIn("record_001", runner.commands[6][3])
+        self.assertIn("scope", runner.commands[7][6])
+        self.assertIn("Completed with memory record IDs", runner.commands[7][6])
         self.assertEqual(runner.commands[-1][1:4], ["work", "room-status", "room"])
+
+    def test_research_cannot_complete_without_ready_memory(self) -> None:
+        """Keep a task incomplete when memory indexing failed."""
+        coordinator = BandCoordinator(
+            BandClient(runner=FakeRunner([])),
+            "room",
+            "owner/strategist",
+            "owner/researcher",
+        )
+        task = SharedTask("#1", "Research", "scope", "in_progress", ())
+        handoff = HandoffPayload(
+            hospital_id="hospital-a",
+            task_id="#1",
+            summary="Finding",
+            record_ids=("record_001",),
+            expected_next_action="Review",
+            open_questions=(),
+        )
+
+        with self.assertRaises(CoordinationError):
+            coordinator.complete_research(
+                task,
+                handoff,
+                (
+                    RememberResult(
+                        record_id="record_001",
+                        indexing_state=IndexingState.FAILED,
+                        error="index failed",
+                        created=True,
+                    ),
+                ),
+            )
 
     def test_stale_or_unapproved_strategy_cannot_handoff(self) -> None:
         """Require explicit approval for the current strategy version."""
