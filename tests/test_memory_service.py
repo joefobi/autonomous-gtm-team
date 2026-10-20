@@ -5,6 +5,7 @@ import threading
 import unittest
 from dataclasses import replace
 from pathlib import Path
+from unittest.mock import Mock
 from urllib.request import urlopen
 
 from hospital_gtm.client import MemoryClient
@@ -99,6 +100,21 @@ class MemoryServiceTests(unittest.TestCase):
         with self.assertRaises(IdempotencyConflict):
             service.remember(replace(record, record_id="record_002"))
 
+    def test_retries_failed_indexing(self) -> None:
+        """Retry indexing when the first attempt fails."""
+        index = Mock()
+        index.index.side_effect = [RuntimeError("temporary failure"), None]
+        service = MemoryService(SQLiteRecordStore(":memory:"), index=index)
+        record = make_record("retry_001")
+
+        failed = service.remember(record)
+        recovered = service.remember(record)
+
+        self.assertEqual(failed.indexing_state, IndexingState.FAILED)
+        self.assertFalse(recovered.created)
+        self.assertEqual(recovered.indexing_state, IndexingState.READY)
+        self.assertEqual(index.index.call_count, 2)
+
     def test_rejects_missing_and_cross_hospital_references(self) -> None:
         """Reject missing and cross-hospital record references."""
         store = SQLiteRecordStore(":memory:")
@@ -149,12 +165,12 @@ class MemoryHTTPTests(unittest.TestCase):
         client = MemoryClient(f"http://{host}:{port}")
         try:
             self.assertEqual(client.health()["status"], "ok")
-            result = client.remember(make_record("http_001"))
+            result = client.remember(make_record("report?draft"))
             self.assertEqual(result.indexing_state, IndexingState.READY)
-            record = client.get_record("http_001")
-            self.assertEqual(record.record_id, "http_001")
+            record = client.get_record("report?draft")
+            self.assertEqual(record.record_id, "report?draft")
             recalled = client.recall("demo", "patient flow")
-            self.assertEqual(recalled.matches[0].record.record_id, "http_001")
+            self.assertEqual(recalled.matches[0].record.record_id, "report?draft")
             with urlopen(f"http://{host}:{port}/health", timeout=5) as response:
                 self.assertEqual(response.status, 200)
         finally:

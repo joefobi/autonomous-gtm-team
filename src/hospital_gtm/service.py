@@ -30,6 +30,9 @@ from hospital_gtm.store import (
     StoreError,
 )
 
+MAX_REQUEST_BODY_BYTES = 1_048_576
+REQUEST_READ_TIMEOUT_SECONDS = 10.0
+
 
 @dataclass(frozen=True, slots=True)
 class DecisionResult:
@@ -83,7 +86,7 @@ class MemoryService:
             The indexing result.
         """
         stored, created = self.store.remember(record)
-        if not created:
+        if not created and stored.indexing_state is IndexingState.READY:
             return RememberResult(
                 record_id=stored.record_id,
                 indexing_state=stored.indexing_state,
@@ -104,7 +107,7 @@ class MemoryService:
                 record_id=failed.record_id,
                 indexing_state=failed.indexing_state,
                 error=failed.indexing_error,
-                created=True,
+                created=created,
             )
 
         ready = self.store.set_indexing_state(stored.record_id, IndexingState.READY)
@@ -112,7 +115,7 @@ class MemoryService:
             record_id=ready.record_id,
             indexing_state=ready.indexing_state,
             error=ready.indexing_error,
-            created=True,
+            created=created,
         )
 
     def get_record(self, record_id: str) -> MemoryRecord:
@@ -251,6 +254,11 @@ def _handler_for(service: MemoryService) -> type[BaseHTTPRequestHandler]:
     class MemoryRequestHandler(BaseHTTPRequestHandler):
         server_version = "HospitalGTM/0.1"
 
+        def setup(self) -> None:
+            """Configure the request socket timeout."""
+            super().setup()
+            self.connection.settimeout(REQUEST_READ_TIMEOUT_SECONDS)
+
         def do_GET(self) -> None:
             """Handle health and record GET requests."""
             path = urlsplit(self.path).path
@@ -304,6 +312,12 @@ def _handler_for(service: MemoryService) -> type[BaseHTTPRequestHandler]:
                 length = int(content_length)
             except ValueError as exc:
                 raise ModelValidationError("Content-Length must be an integer") from exc
+            if length < 0:
+                raise ModelValidationError("Content-Length must not be negative")
+            if length > MAX_REQUEST_BODY_BYTES:
+                raise ModelValidationError(
+                    f"request body must not exceed {MAX_REQUEST_BODY_BYTES} bytes"
+                )
             try:
                 decoded = json.loads(self.rfile.read(length))
             except json.JSONDecodeError as exc:

@@ -21,6 +21,7 @@ Run the same checks used in CI:
 .venv/bin/isort --check-only src tests
 .venv/bin/mypy src
 .venv/bin/python -m unittest discover -s tests
+```
 
 ## Shared memory service
 
@@ -39,4 +40,3 @@ keyword index is deterministic and local; Cognee can be selected with
 The first public-evidence fixture uses The Johns Hopkins Hospital and records
 only a sourced public page reference. It does not assert a customer need or
 buying intent.
-```

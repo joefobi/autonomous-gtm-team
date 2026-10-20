@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from urllib.error import HTTPError, URLError
+from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 from hospital_gtm.models import (
@@ -60,7 +61,7 @@ class MemoryClient:
         Returns:
             The canonical record.
         """
-        payload = self._request("GET", f"/memories/{record_id}")
+        payload = self._request("GET", f"/memories/{quote(record_id, safe='')}")
         return MemoryRecord.from_mapping(payload)
 
     def recall(self, hospital_id: str, query: str, limit: int = 20) -> RecallResult:
